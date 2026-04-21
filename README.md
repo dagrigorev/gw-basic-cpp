@@ -87,7 +87,11 @@ This project aims to preserve the simplicity and spirit of GW-BASIC while provid
 
  ![easter](./easter.png)
 
- 
+
+ ![sincos](./sincos.png)
+
+ ![commander](./commander.png)
+
 ---
 
 ### 📁 File I/O
