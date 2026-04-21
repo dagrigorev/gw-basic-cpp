@@ -77,6 +77,10 @@ public:
     void set_engine_tick(EngineTick tick);
 
     void print(const std::string& text) const;
+    void cls();
+    [[nodiscard]] auto graphics_text_mode() const -> bool;
+    void render_text(const std::string& text) const;
+    void draw_glyph_cell(int column, int row, char ch, int fg, int bg) const;
     [[nodiscard]] auto read_line() const -> std::string;
     [[nodiscard]] auto read_key() const -> std::string;
     void tick_engine() const;
@@ -177,6 +181,11 @@ private:
     mutable std::size_t current_print_column_{};
     bool stop_requested_{false};
     bool key_display_enabled_{true};
+    mutable int text_row_{1};
+    mutable int text_col_{1};
+    int text_foreground_{15};
+    int text_background_{0};
+    bool cursor_visible_{true};
     int screen_mode_{0};
     int graphics_width_{320};
     int graphics_height_{200};
@@ -193,7 +202,7 @@ private:
     double window_y1_{0.0};
     double window_x2_{319.0};
     double window_y2_{199.0};
-    std::vector<std::uint8_t> graphics_pixels_;
+    mutable std::vector<std::uint8_t> graphics_pixels_;
     std::array<std::uint8_t, 256> palette_map_{};
     std::unordered_map<std::string, std::vector<std::uint8_t>> graphics_blocks_;
     mutable bool graphics_dirty_{true};

@@ -970,7 +970,7 @@ void Interpreter::execute(const Statement& stmt, int& current_line, std::size_t&
         [&](const RmdirStmt& node) { runtime_.remove_directory(eval(*node.path).as_string()); ++statement_index; },
         [&](const LsetStmt& node) { runtime_.set_record_field(node.target.name, eval(*node.value).as_string(), false); ++statement_index; },
         [&](const RsetStmt& node) { runtime_.set_record_field(node.target.name, eval(*node.value).as_string(), true); ++statement_index; },
-        [&](const ClsStmt&) { runtime_.print("\x1b[2J\x1b[H"); ++statement_index; },
+        [&](const ClsStmt&) { runtime_.cls(); ++statement_index; },
         [&](const LocateStmt& node) {
             auto to_opt_int = [&](const std::optional<ExprPtr>& expr) -> std::optional<int> {
                 if (!expr.has_value()) {

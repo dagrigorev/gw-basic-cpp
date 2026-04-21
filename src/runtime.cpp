@@ -62,6 +62,69 @@ auto split_csv_record(const std::string& line) -> std::vector<std::string> {
 }
 
 
+
+
+[[nodiscard]] auto glyph_rows_for(char ch) -> std::array<std::uint8_t, 7> {
+    using A = std::array<std::uint8_t,7>;
+    ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    switch (ch) {
+        case 'A': return A{0x0E,0x11,0x11,0x1F,0x11,0x11,0x11};
+        case 'B': return A{0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E};
+        case 'C': return A{0x0E,0x11,0x10,0x10,0x10,0x11,0x0E};
+        case 'D': return A{0x1C,0x12,0x11,0x11,0x11,0x12,0x1C};
+        case 'E': return A{0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F};
+        case 'F': return A{0x1F,0x10,0x10,0x1E,0x10,0x10,0x10};
+        case 'G': return A{0x0E,0x11,0x10,0x10,0x13,0x11,0x0E};
+        case 'H': return A{0x11,0x11,0x11,0x1F,0x11,0x11,0x11};
+        case 'I': return A{0x0E,0x04,0x04,0x04,0x04,0x04,0x0E};
+        case 'J': return A{0x01,0x01,0x01,0x01,0x11,0x11,0x0E};
+        case 'K': return A{0x11,0x12,0x14,0x18,0x14,0x12,0x11};
+        case 'L': return A{0x10,0x10,0x10,0x10,0x10,0x10,0x1F};
+        case 'M': return A{0x11,0x1B,0x15,0x15,0x11,0x11,0x11};
+        case 'N': return A{0x11,0x11,0x19,0x15,0x13,0x11,0x11};
+        case 'O': return A{0x0E,0x11,0x11,0x11,0x11,0x11,0x0E};
+        case 'P': return A{0x1E,0x11,0x11,0x1E,0x10,0x10,0x10};
+        case 'Q': return A{0x0E,0x11,0x11,0x11,0x15,0x12,0x0D};
+        case 'R': return A{0x1E,0x11,0x11,0x1E,0x14,0x12,0x11};
+        case 'S': return A{0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E};
+        case 'T': return A{0x1F,0x04,0x04,0x04,0x04,0x04,0x04};
+        case 'U': return A{0x11,0x11,0x11,0x11,0x11,0x11,0x0E};
+        case 'V': return A{0x11,0x11,0x11,0x11,0x11,0x0A,0x04};
+        case 'W': return A{0x11,0x11,0x11,0x15,0x15,0x15,0x0A};
+        case 'X': return A{0x11,0x11,0x0A,0x04,0x0A,0x11,0x11};
+        case 'Y': return A{0x11,0x11,0x0A,0x04,0x04,0x04,0x04};
+        case 'Z': return A{0x1F,0x01,0x02,0x04,0x08,0x10,0x1F};
+        case '0': return A{0x0E,0x11,0x13,0x15,0x19,0x11,0x0E};
+        case '1': return A{0x04,0x0C,0x04,0x04,0x04,0x04,0x0E};
+        case '2': return A{0x0E,0x11,0x01,0x02,0x04,0x08,0x1F};
+        case '3': return A{0x1E,0x01,0x01,0x0E,0x01,0x01,0x1E};
+        case '4': return A{0x02,0x06,0x0A,0x12,0x1F,0x02,0x02};
+        case '5': return A{0x1F,0x10,0x10,0x1E,0x01,0x01,0x1E};
+        case '6': return A{0x0E,0x10,0x10,0x1E,0x11,0x11,0x0E};
+        case '7': return A{0x1F,0x01,0x02,0x04,0x08,0x08,0x08};
+        case '8': return A{0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E};
+        case '9': return A{0x0E,0x11,0x11,0x0F,0x01,0x01,0x0E};
+        case ':': return A{0x00,0x04,0x04,0x00,0x04,0x04,0x00};
+        case '.': return A{0x00,0x00,0x00,0x00,0x00,0x06,0x06};
+        case ',': return A{0x00,0x00,0x00,0x00,0x06,0x06,0x04};
+        case '-': return A{0x00,0x00,0x00,0x1F,0x00,0x00,0x00};
+        case '_': return A{0x00,0x00,0x00,0x00,0x00,0x00,0x1F};
+        case '/': return A{0x01,0x02,0x02,0x04,0x08,0x08,0x10};
+        case '\\': return A{0x10,0x08,0x08,0x04,0x02,0x02,0x01};
+        case '[': return A{0x0E,0x08,0x08,0x08,0x08,0x08,0x0E};
+        case ']': return A{0x0E,0x02,0x02,0x02,0x02,0x02,0x0E};
+        case '(': return A{0x02,0x04,0x08,0x08,0x08,0x04,0x02};
+        case ')': return A{0x08,0x04,0x02,0x02,0x02,0x04,0x08};
+        case '+': return A{0x00,0x04,0x04,0x1F,0x04,0x04,0x00};
+        case '=': return A{0x00,0x1F,0x00,0x1F,0x00,0x00,0x00};
+        case '>': return A{0x10,0x08,0x04,0x02,0x04,0x08,0x10};
+        case '<': return A{0x01,0x02,0x04,0x08,0x04,0x02,0x01};
+        case '!': return A{0x04,0x04,0x04,0x04,0x04,0x00,0x04};
+        case '?': return A{0x0E,0x11,0x01,0x02,0x04,0x00,0x04};
+        case ' ': default: return A{0,0,0,0,0,0,0};
+    }
+}
+
 [[nodiscard]] auto normalize_graphics_put_mode(std::optional<std::string> mode) -> std::string {
     if (!mode.has_value()) {
         return "PSET";
@@ -110,9 +173,76 @@ void RuntimeContext::request_stop() { stop_requested_ = true; }
 void RuntimeContext::clear_stop_request() { stop_requested_ = false; }
 bool RuntimeContext::stop_requested() const { return stop_requested_; }
 
-void RuntimeContext::print(const std::string& text) const {
+bool RuntimeContext::graphics_text_mode() const {
+    return graphics_presenter_ && screen_mode_ != 0;
+}
+
+void RuntimeContext::draw_glyph_cell(int column, int row, char ch, int fg, int bg) const {
+    const int px = std::max(0, (column - 1) * 8);
+    const int py = std::max(0, (row - 1) * 8);
+    const auto glyph = glyph_rows_for(ch);
+    const auto fg_color = palette_map_[static_cast<std::size_t>(std::clamp(fg, 0, 255))];
+    const auto bg_color = palette_map_[static_cast<std::size_t>(std::clamp(bg, 0, 255))];
+    for (int yy = 0; yy < 8; ++yy) {
+        for (int xx = 0; xx < 8; ++xx) {
+            const int gx = px + xx;
+            const int gy = py + yy;
+            if (!in_bounds(gx, gy, graphics_width_, graphics_height_)) continue;
+            std::uint8_t color = bg_color;
+            if (yy >= 1 && yy <= 7 && xx >= 1 && xx <= 5) {
+                const auto rowbits = glyph[static_cast<std::size_t>(yy - 1)];
+                const auto mask = static_cast<std::uint8_t>(1u << (5 - xx));
+                if ((rowbits & mask) != 0) color = fg_color;
+            }
+            graphics_pixels_[static_cast<std::size_t>(gy * graphics_width_ + gx)] = color;
+        }
+    }
+}
+
+void RuntimeContext::render_text(const std::string& text) const {
+    const int cols = std::max(1, graphics_width_ / 8);
+    const int rows = std::max(1, graphics_height_ / 8);
     for (char ch : text) {
-        if (ch == "\n"[0] || ch == "\r"[0]) {
+        if (ch == '\r') continue;
+        if (ch == '\n') {
+            ++text_row_;
+            text_col_ = 1;
+            current_print_column_ = 0;
+            continue;
+        }
+        if (text_col_ > cols) {
+            ++text_row_;
+            text_col_ = 1;
+        }
+        if (text_row_ > rows) text_row_ = rows;
+        draw_glyph_cell(text_col_, text_row_, ch, text_foreground_, text_background_);
+        ++text_col_;
+        ++current_print_column_;
+    }
+    mark_graphics_dirty(false);
+}
+
+void RuntimeContext::cls() {
+    if (graphics_text_mode()) {
+        std::fill(graphics_pixels_.begin(), graphics_pixels_.end(), palette_map_[static_cast<std::size_t>(std::clamp(text_background_, 0, 255))]);
+        text_row_ = 1;
+        text_col_ = 1;
+        current_print_column_ = 0;
+        graphics_cursor_x_ = 0;
+        graphics_cursor_y_ = 0;
+        mark_graphics_dirty(true);
+        return;
+    }
+    print("\x1b[0m\x1b[2J\x1b[H");
+}
+
+void RuntimeContext::print(const std::string& text) const {
+    if (graphics_text_mode()) {
+        render_text(text);
+        return;
+    }
+    for (char ch : text) {
+        if (ch == '\n' || ch == '\r') {
             current_print_column_ = 0;
         } else {
             ++current_print_column_;
@@ -260,6 +390,11 @@ void RuntimeContext::clear_variables() {
     graphics_view_top_ = 0;
     graphics_view_right_ = graphics_width_ - 1;
     graphics_view_bottom_ = graphics_height_ - 1;
+    text_row_ = 1;
+    text_col_ = 1;
+    text_foreground_ = 15;
+    text_background_ = 0;
+    cursor_visible_ = true;
     mark_graphics_dirty(true);
 }
 
@@ -591,6 +726,13 @@ void RuntimeContext::remove_directory(const std::string& path) {
 void RuntimeContext::locate_cursor(std::optional<int> row, std::optional<int> column, std::optional<int> cursor, std::optional<int> start, std::optional<int> stop) {
     (void)start;
     (void)stop;
+    if (graphics_text_mode()) {
+        if (row.has_value()) text_row_ = std::max(1, *row);
+        if (column.has_value()) text_col_ = std::max(1, *column);
+        if (cursor.has_value()) cursor_visible_ = (*cursor != 0);
+        current_print_column_ = static_cast<std::size_t>(std::max(0, text_col_ - 1));
+        return;
+    }
     if (row.has_value() || column.has_value()) {
         const int ansi_row = std::max(1, row.value_or(1));
         const int ansi_col = std::max(1, column.value_or(1));
@@ -603,6 +745,16 @@ void RuntimeContext::locate_cursor(std::optional<int> row, std::optional<int> co
 
 void RuntimeContext::set_color(std::optional<int> foreground, std::optional<int> background, std::optional<int> border) {
     (void)border;
+    if (graphics_text_mode()) {
+        if (!foreground.has_value() && !background.has_value()) {
+            text_foreground_ = 15;
+            text_background_ = 0;
+            return;
+        }
+        if (foreground.has_value()) text_foreground_ = std::clamp(*foreground, 0, 255);
+        if (background.has_value()) text_background_ = std::clamp(*background, 0, 255);
+        return;
+    }
     if (!foreground.has_value() && !background.has_value()) {
         print("[0m");
         return;
@@ -646,7 +798,12 @@ void RuntimeContext::set_screen(std::optional<int> mode, std::optional<int> colo
     window_x2_ = static_cast<double>(graphics_width_ - 1);
     window_y2_ = static_cast<double>(graphics_height_ - 1);
     for (std::size_t i = 0; i < palette_map_.size(); ++i) { palette_map_[i] = static_cast<std::uint8_t>(i); }
-    print("[0m[2J[H");
+    text_row_ = 1;
+    text_col_ = 1;
+    text_foreground_ = 15;
+    text_background_ = 0;
+    cursor_visible_ = true;
+    cls();
     mark_graphics_dirty(true);
 }
 
