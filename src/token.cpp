@@ -1,0 +1,102 @@
+#include "gwbasic/token.hpp"
+
+namespace gwbasic {
+
+auto to_string(TokenType type) -> std::string {
+    switch (type) {
+        case TokenType::EndOfLine: return "EndOfLine";
+        case TokenType::Number: return "Number";
+        case TokenType::String: return "String";
+        case TokenType::Identifier: return "Identifier";
+        case TokenType::LineNumber: return "LineNumber";
+        case TokenType::Comma: return "Comma";
+        case TokenType::Colon: return "Colon";
+        case TokenType::Semicolon: return "Semicolon";
+        case TokenType::LeftParen: return "LeftParen";
+        case TokenType::RightParen: return "RightParen";
+        case TokenType::Plus: return "Plus";
+        case TokenType::Minus: return "Minus";
+        case TokenType::Star: return "Star";
+        case TokenType::Slash: return "Slash";
+        case TokenType::Hash: return "Hash";
+        case TokenType::Equal: return "Equal";
+        case TokenType::NotEqual: return "NotEqual";
+        case TokenType::Less: return "Less";
+        case TokenType::LessEqual: return "LessEqual";
+        case TokenType::Greater: return "Greater";
+        case TokenType::GreaterEqual: return "GreaterEqual";
+        case TokenType::KeywordPrint: return "PRINT";
+        case TokenType::KeywordUsing: return "USING";
+        case TokenType::KeywordOpen: return "OPEN";
+        case TokenType::KeywordClose: return "CLOSE";
+        case TokenType::KeywordWrite: return "WRITE";
+        case TokenType::KeywordLine: return "LINE";
+        case TokenType::KeywordAs: return "AS";
+        case TokenType::KeywordInputFile: return "INPUT";
+        case TokenType::KeywordOutput: return "OUTPUT";
+        case TokenType::KeywordAppend: return "APPEND";
+        case TokenType::KeywordRandom: return "RANDOM";
+        case TokenType::KeywordLen: return "LEN";
+        case TokenType::KeywordLet: return "LET";
+        case TokenType::KeywordInput: return "INPUT";
+        case TokenType::KeywordIf: return "IF";
+        case TokenType::KeywordThen: return "THEN";
+        case TokenType::KeywordElse: return "ELSE";
+        case TokenType::KeywordAnd: return "AND";
+        case TokenType::KeywordOr: return "OR";
+        case TokenType::KeywordNot: return "NOT";
+        case TokenType::KeywordGoto: return "GOTO";
+        case TokenType::KeywordGosub: return "GOSUB";
+        case TokenType::KeywordReturn: return "RETURN";
+        case TokenType::KeywordFor: return "FOR";
+        case TokenType::KeywordTo: return "TO";
+        case TokenType::KeywordStep: return "STEP";
+        case TokenType::KeywordNext: return "NEXT";
+        case TokenType::KeywordData: return "DATA";
+        case TokenType::KeywordRead: return "READ";
+        case TokenType::KeywordRestore: return "RESTORE";
+        case TokenType::KeywordDim: return "DIM";
+        case TokenType::KeywordWhile: return "WHILE";
+        case TokenType::KeywordWend: return "WEND";
+        case TokenType::KeywordOn: return "ON";
+        case TokenType::KeywordDefint: return "DEFINT";
+        case TokenType::KeywordDefstr: return "DEFSTR";
+        case TokenType::KeywordDefsng: return "DEFSNG";
+        case TokenType::KeywordDefdbl: return "DEFDBL";
+        case TokenType::KeywordStop: return "STOP";
+        case TokenType::KeywordCont: return "CONT";
+        case TokenType::KeywordEnd: return "END";
+        case TokenType::KeywordRem: return "REM";
+        case TokenType::KeywordList: return "LIST";
+        case TokenType::KeywordRun: return "RUN";
+        case TokenType::KeywordNew: return "NEW";
+        case TokenType::KeywordClear: return "CLEAR";
+        case TokenType::KeywordField: return "FIELD";
+        case TokenType::KeywordGet: return "GET";
+        case TokenType::KeywordPut: return "PUT";
+        case TokenType::KeywordLset: return "LSET";
+        case TokenType::KeywordRset: return "RSET";
+        case TokenType::KeywordKill: return "KILL";
+        case TokenType::KeywordName: return "NAME";
+        case TokenType::KeywordMkdir: return "MKDIR";
+        case TokenType::KeywordRmdir: return "RMDIR";
+        case TokenType::KeywordCls: return "CLS";
+        case TokenType::KeywordLocate: return "LOCATE";
+        case TokenType::KeywordColor: return "COLOR";
+        case TokenType::KeywordBeep: return "BEEP";
+        case TokenType::KeywordScreen: return "SCREEN";
+        case TokenType::KeywordKey: return "KEY";
+        case TokenType::KeywordSound: return "SOUND";
+        case TokenType::KeywordPlay: return "PLAY";
+        case TokenType::KeywordPset: return "PSET";
+        case TokenType::KeywordCircle: return "CIRCLE";
+        case TokenType::KeywordPaint: return "PAINT";
+        case TokenType::KeywordDraw: return "DRAW";
+        case TokenType::KeywordView: return "VIEW";
+        case TokenType::KeywordWindow: return "WINDOW";
+        case TokenType::KeywordPalette: return "PALETTE";
+    }
+    return "Unknown";
+}
+
+} // namespace gwbasic
