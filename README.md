@@ -297,7 +297,7 @@ Focus areas:
 
 ## 📜 License
 
-(Choose your license here, e.g. MIT)
+Under MIT license
 
 ---
 
