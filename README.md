@@ -78,17 +78,28 @@ This project aims to preserve the simplicity and spirit of GW-BASIC while provid
 
  Here is example of graphics 
 
+ 
+  `tan(x^2 + y^2) = 1` graph example:
 
  ![tan](./tan.png)
 
 
+  `snake game` example:
+
  ![snake](./snake.png)
 
 
+ `easter card` example:
+
  ![easter](./easter.png)
 
+ 
+ `y=sin(x), y=cos(x)` graphs:
 
  ![sincos](./sincos.png)
+
+
+ `norton commaner` inspired example:
 
  ![commander](./commander.png)
 
