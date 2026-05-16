@@ -11,6 +11,9 @@ CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
 build/
+.verify-cmake/
+.verify-tidy/
+.verify-tidy-vs/
 
 # CLion
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

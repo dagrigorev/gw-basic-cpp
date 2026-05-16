@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }} / ${{ matrix.config }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows MSVC
+            config: Debug
+            cmake_args: ""
+          - os: windows-latest
+            name: Windows MSVC
+            config: Release
+            cmake_args: ""
+          - os: ubuntu-latest
+            name: Linux GCC
+            config: Debug
+            cmake_args: "-DCMAKE_CXX_COMPILER=g++"
+          - os: ubuntu-latest
+            name: Linux GCC
+            config: Release
+            cmake_args: "-DCMAKE_CXX_COMPILER=g++"
+          - os: ubuntu-latest
+            name: Linux Clang
+            config: Debug
+            cmake_args: "-DCMAKE_CXX_COMPILER=clang++"
+          - os: ubuntu-latest
+            name: Linux Clang
+            config: Release
+            cmake_args: "-DCMAKE_CXX_COMPILER=clang++"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang g++ libx11-dev libgl1-mesa-dev
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }} ${{ matrix.cmake_args }}
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.config }} --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C ${{ matrix.config }} --output-on-failure
+
+  static-analysis:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy cppcheck libx11-dev libgl1-mesa-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-analysis
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          -DGWBASIC_ENABLE_CLANG_TIDY=ON
+          -DGWBASIC_ENABLE_CPPCHECK=ON
+
+      - name: Analyze
+        run: cmake --build build-analysis --parallel
+
+  fuzz-smoke:
+    name: Fuzz smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libx11-dev libgl1-mesa-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-fuzz
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=Debug
+          -DGWBASIC_BUILD_TESTS=OFF
+          -DGWBASIC_BUILD_FUZZERS=ON
+
+      - name: Build fuzzer
+        run: cmake --build build-fuzz --target gwbasic_lexer_parser_fuzzer --parallel
+
+      - name: Run fuzzer smoke
+        run: ./build-fuzz/gwbasic_lexer_parser_fuzzer -runs=100

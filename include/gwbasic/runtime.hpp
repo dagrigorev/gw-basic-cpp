@@ -15,24 +15,33 @@
 
 namespace gwbasic {
 
+/** Stored representation of one numbered BASIC program line. */
 struct ProgramLine {
     int number{};
     std::vector<StmtPtr> statements;
     std::string source;
 };
 
+/** Line-numbered program storage with ordered iteration and direct lookup. */
 class Program {
 public:
+    /** Insert, replace, or delete a parsed numbered line. */
     void store(ParsedLine line);
+    /** Remove all stored lines. */
     void clear();
     [[nodiscard]] auto empty() const -> bool;
+    /** Ordered lines used for listing and sequential execution. */
     [[nodiscard]] auto lines() const -> const std::map<int, ProgramLine>&;
+    /** O(1) lookup by BASIC line number. */
+    [[nodiscard]] auto find_line(int line) const -> const ProgramLine*;
     [[nodiscard]] auto has_line(int line) const -> bool;
 
 private:
     std::map<int, ProgramLine> lines_;
+    std::unordered_map<int, const ProgramLine*> line_index_;
 };
 
+/** FOR/NEXT execution frame. */
 struct ForFrame {
     std::string variable;
     double limit{};
@@ -41,18 +50,22 @@ struct ForFrame {
     std::size_t statement_index_after_for{};
 };
 
+/** Default variable kind selected by suffixes and DEF type statements. */
 enum class VariableKind {
     Numeric,
     Integer,
     String
 };
 
+/** Runtime storage for one BASIC array. */
 struct ArrayValue {
+    std::vector<int> lower_bounds;
     std::vector<int> dimensions;
     std::vector<Value> elements;
     VariableKind kind{VariableKind::Numeric};
 };
 
+/** WHILE/WEND execution frame. */
 struct WhileFrame {
     int while_line{};
     std::size_t while_statement_index{};
@@ -60,14 +73,27 @@ struct WhileFrame {
     std::size_t body_statement_index{};
 };
 
+/**
+ * Runtime services and mutable BASIC machine state.
+ *
+ * RuntimeContext owns variables, arrays, files, DATA state, graphics state,
+ * input buffers, and control-flow stacks. It is deliberately callback-driven so
+ * the interpreter can run in tests, CLI mode, or a platform graphics window.
+ */
 class RuntimeContext {
 public:
+    /** Text output sink used by PRINT and diagnostics-like runtime output. */
     using Output = std::function<void(const std::string&)>;
+    /** Blocking line input source used by INPUT and INPUT$. */
     using Input = std::function<std::string()>;
+    /** Nonblocking key source used by INKEY$. */
     using KeyInput = std::function<std::optional<std::string>()>;
+    /** Indexed-color graphics presenter callback. */
     using GraphicsPresenter = std::function<void(const std::vector<std::uint8_t>&, int, int, const std::array<std::uint8_t, 256>&)>;
+    /** Cooperative event/timing hook called by long-running execution. */
     using EngineTick = std::function<void()>;
 
+    /** Construct a runtime with optional output, line input, and key input. */
     explicit RuntimeContext(Output output = {}, Input input = {}, KeyInput key_input = {});
 
     void set_output(Output output);
@@ -76,6 +102,7 @@ public:
     void set_graphics_presenter(GraphicsPresenter presenter);
     void set_engine_tick(EngineTick tick);
 
+    /** Print text either to the output callback or the graphics text surface. */
     void print(const std::string& text) const;
     void cls();
     [[nodiscard]] auto graphics_text_mode() const -> bool;
@@ -83,6 +110,7 @@ public:
     void draw_glyph_cell(int column, int row, char ch, int fg, int bg) const;
     [[nodiscard]] auto read_line() const -> std::string;
     [[nodiscard]] auto read_key() const -> std::string;
+    [[nodiscard]] auto read_chars(std::size_t count) const -> std::string;
     void tick_engine() const;
     void flush_graphics() const;
     void request_stop();
@@ -93,7 +121,12 @@ public:
     [[nodiscard]] auto get_variable(const std::string& name) const -> Value;
     void clear_variables();
 
+    /** Allocate a BASIC array. Dimensions are inclusive GW-BASIC bounds. */
     void dim_array(const std::string& name, std::vector<int> dimensions);
+    /** Remove a BASIC array so it can be DIMed again. */
+    void erase_array(const std::string& name);
+    /** Set default lower bound for subsequently DIMed arrays. */
+    void set_option_base(int base);
     void set_array_value(const std::string& name, const std::vector<int>& indices, Value value);
     [[nodiscard]] auto get_array_value(const std::string& name, const std::vector<int>& indices) const -> Value;
 
@@ -103,6 +136,7 @@ public:
 
     void push_return(int line, std::size_t statement_index);
     [[nodiscard]] auto pop_return() -> std::optional<std::pair<int, std::size_t>>;
+    void clear_control_stacks();
 
     void push_for(ForFrame frame);
     [[nodiscard]] auto top_for() -> ForFrame*;
@@ -121,6 +155,7 @@ public:
     void open_file(int file_number, const std::string& path, FileMode mode, std::optional<int> record_len = std::nullopt);
     void close_file(std::optional<int> file_number = std::nullopt);
     void write_file(int file_number, const std::string& text);
+    void list_files(const std::string& pattern = "*") const;
     void set_field(int file_number, std::vector<std::pair<int, std::string>> bindings);
     void set_record_field(const std::string& variable, const std::string& value, bool right_align);
     void put_record(int file_number, std::optional<int> record_number = std::nullopt);
@@ -133,11 +168,17 @@ public:
     void delete_file(const std::string& path);
     void rename_file(const std::string& old_path, const std::string& new_path);
     void create_directory(const std::string& path);
+    void change_directory(const std::string& path);
     void remove_directory(const std::string& path);
     void locate_cursor(std::optional<int> row, std::optional<int> column, std::optional<int> cursor = std::nullopt, std::optional<int> start = std::nullopt, std::optional<int> stop = std::nullopt);
+    void set_text_width(int columns);
     void set_color(std::optional<int> foreground, std::optional<int> background = std::nullopt, std::optional<int> border = std::nullopt);
     void set_screen(std::optional<int> mode, std::optional<int> color_switch = std::nullopt, std::optional<int> active_page = std::nullopt, std::optional<int> visual_page = std::nullopt);
     void set_key_display(bool enabled);
+    /** Write to isolated 64 KiB virtual BASIC memory, never native memory. */
+    void poke(int address, int value);
+    /** Read from isolated 64 KiB virtual BASIC memory. */
+    [[nodiscard]] auto peek(int address) const -> double;
     void sound(std::optional<double> frequency, std::optional<double> duration);
     void play(const std::string& sequence);
     void pset(int x, int y, std::optional<int> color = std::nullopt);
@@ -170,6 +211,7 @@ private:
     EngineTick engine_tick_;
     std::unordered_map<std::string, Value> variables_;
     std::unordered_map<std::string, ArrayValue> arrays_;
+    int option_base_{0};
     std::vector<std::pair<int, std::size_t>> return_stack_;
     std::vector<ForFrame> for_stack_;
     std::vector<WhileFrame> while_stack_;
@@ -179,13 +221,16 @@ private:
     std::array<VariableKind, 26> default_types_{};
     std::unordered_map<int, std::shared_ptr<void>> files_;
     mutable std::size_t current_print_column_{};
+    mutable std::string input_char_buffer_;
     bool stop_requested_{false};
     bool key_display_enabled_{true};
     mutable int text_row_{1};
     mutable int text_col_{1};
+    int text_width_{80};
     int text_foreground_{15};
     int text_background_{0};
     bool cursor_visible_{true};
+    std::array<std::uint8_t, 65536> virtual_memory_{};
     int screen_mode_{0};
     int graphics_width_{320};
     int graphics_height_{200};

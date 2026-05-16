@@ -33,6 +33,34 @@ public:
         return line;
     }
 
+    [[nodiscard]] auto parse_recovering() -> ParseResult {
+        ParseResult result;
+        result.line.original_text = std::move(original_);
+
+        if (check(TokenType::LineNumber)) {
+            result.line.line_number = std::stoi(advance().lexeme);
+        }
+
+        while (!check(TokenType::EndOfLine)) {
+            try {
+                result.line.statements.push_back(parse_statement());
+                if (match(TokenType::Colon)) {
+                    continue;
+                }
+                if (!check(TokenType::EndOfLine)) {
+                    throw std::runtime_error("Expected ':' or end of line");
+                }
+            } catch (const std::exception& ex) {
+                result.diagnostics.push_back(ParseDiagnostic{ex.what(), peek().column});
+                synchronize();
+                if (match(TokenType::Colon)) {
+                    continue;
+                }
+            }
+        }
+        return result;
+    }
+
 private:
     [[nodiscard]] auto parse_statement() -> StmtPtr {
         if (match(TokenType::KeywordPrint)) {
@@ -52,7 +80,7 @@ private:
         if (match(TokenType::KeywordView)) { return parse_view_statement(); }
         if (match(TokenType::KeywordWindow)) { return parse_window_statement(); }
         if (match(TokenType::KeywordPalette)) { return parse_palette_statement(); }
-        if (check(TokenType::KeywordInput) && tokens_[current_ + 1].type == TokenType::Hash) { advance(); return parse_input_file_statement(); }
+        if (check(TokenType::KeywordInput) && tokens_[current_ + 1].type == TokenType::Hash) { (void)advance(); return parse_input_file_statement(); }
         if (match(TokenType::KeywordLet)) {
             return parse_assignment();
         }
@@ -94,6 +122,24 @@ private:
         }
         if (match(TokenType::KeywordOn)) {
             return parse_on_statement();
+        }
+        if (match(TokenType::KeywordError)) {
+            auto stmt = std::make_unique<Statement>();
+            ErrorStmt s;
+            s.code = parse_expression();
+            stmt->node = std::move(s);
+            return stmt;
+        }
+        if (match(TokenType::KeywordResume)) {
+            auto stmt = std::make_unique<Statement>();
+            ResumeStmt s;
+            if (match(TokenType::KeywordNext)) {
+                s.next = true;
+            } else if (check(TokenType::Number) || check(TokenType::LineNumber)) {
+                s.target_line = std::stoi(advance().lexeme);
+            }
+            stmt->node = s;
+            return stmt;
         }
         if (match(TokenType::KeywordReturn)) { auto stmt = std::make_unique<Statement>(); stmt->node = ReturnStmt{}; return stmt; }
         if (match(TokenType::KeywordFor)) {
@@ -166,6 +212,9 @@ private:
             stmt->node = std::move(s);
             return stmt;
         }
+        if (match(TokenType::KeywordDef)) {
+            return parse_def_fn_statement();
+        }
         if (match(TokenType::KeywordDim)) {
             auto stmt = std::make_unique<Statement>();
             DimStmt s;
@@ -174,6 +223,26 @@ private:
                 s.declarations.push_back(parse_dim_decl());
             }
             stmt->node = std::move(s);
+            return stmt;
+        }
+        if (match(TokenType::KeywordErase)) {
+            auto stmt = std::make_unique<Statement>();
+            EraseStmt s;
+            s.names.push_back(consume(TokenType::Identifier, "Expected array name after ERASE").lexeme);
+            while (match(TokenType::Comma)) {
+                s.names.push_back(consume(TokenType::Identifier, "Expected array name after comma").lexeme);
+            }
+            stmt->node = std::move(s);
+            return stmt;
+        }
+        if (match(TokenType::KeywordOption)) {
+            auto stmt = std::make_unique<Statement>();
+            (void)consume(TokenType::KeywordBase, "Expected BASE after OPTION");
+            const auto base = std::stoi(consume_any_number("Expected 0 or 1 after OPTION BASE").lexeme);
+            if (base != 0 && base != 1) {
+                throw std::runtime_error("OPTION BASE must be 0 or 1");
+            }
+            stmt->node = OptionBaseStmt{base};
             return stmt;
         }
         if (match(TokenType::KeywordDefint)) {
@@ -202,25 +271,41 @@ private:
         if (match(TokenType::KeywordRem)) { auto stmt = std::make_unique<Statement>(); stmt->node = RemStmt{check(TokenType::String) ? advance().lexeme : ""}; return stmt; }
         if (match(TokenType::KeywordList)) { auto stmt = std::make_unique<Statement>(); stmt->node = ListStmt{}; return stmt; }
         if (match(TokenType::KeywordRun)) { auto stmt = std::make_unique<Statement>(); stmt->node = RunStmt{}; return stmt; }
+        if (match(TokenType::KeywordLoad)) { auto stmt = std::make_unique<Statement>(); stmt->node = LoadStmt{parse_expression()}; return stmt; }
+        if (match(TokenType::KeywordSave)) { auto stmt = std::make_unique<Statement>(); stmt->node = SaveStmt{parse_expression()}; return stmt; }
         if (match(TokenType::KeywordNew)) { auto stmt = std::make_unique<Statement>(); stmt->node = NewStmt{}; return stmt; }
         if (match(TokenType::KeywordClear)) { auto stmt = std::make_unique<Statement>(); stmt->node = ClearStmt{}; return stmt; }
+        if (match(TokenType::KeywordFiles)) { auto stmt = std::make_unique<Statement>(); FilesStmt s; if (!check(TokenType::EndOfLine) && !check(TokenType::Colon)) s.pattern = parse_expression(); stmt->node = std::move(s); return stmt; }
         if (match(TokenType::KeywordField)) { return parse_field_statement(); }
         if (match(TokenType::KeywordGet)) { return parse_get_put_statement(false); }
         if (match(TokenType::KeywordPut)) { return parse_get_put_statement(true); }
         if (match(TokenType::KeywordLset)) { auto stmt = std::make_unique<Statement>(); LsetStmt s; s.target = parse_variable_reference(); (void)consume(TokenType::Equal, "Expected = after LSET target"); s.value = parse_expression(); stmt->node = std::move(s); return stmt; }
         if (match(TokenType::KeywordRset)) { auto stmt = std::make_unique<Statement>(); RsetStmt s; s.target = parse_variable_reference(); (void)consume(TokenType::Equal, "Expected = after RSET target"); s.value = parse_expression(); stmt->node = std::move(s); return stmt; }
+        if (match(TokenType::KeywordSwap)) { return parse_swap_statement(); }
         if (match(TokenType::KeywordKill)) { auto stmt = std::make_unique<Statement>(); stmt->node = KillStmt{parse_expression()}; return stmt; }
         if (match(TokenType::KeywordName)) { auto stmt = std::make_unique<Statement>(); NameStmt s; s.old_path = parse_expression(); (void)consume(TokenType::KeywordAs, "Expected AS in NAME statement"); s.new_path = parse_expression(); stmt->node = std::move(s); return stmt; }
         if (match(TokenType::KeywordMkdir)) { auto stmt = std::make_unique<Statement>(); stmt->node = MkdirStmt{parse_expression()}; return stmt; }
+        if (match(TokenType::KeywordChdir)) { auto stmt = std::make_unique<Statement>(); stmt->node = ChdirStmt{parse_expression()}; return stmt; }
         if (match(TokenType::KeywordRmdir)) { auto stmt = std::make_unique<Statement>(); stmt->node = RmdirStmt{parse_expression()}; return stmt; }
         if (match(TokenType::KeywordCls)) { auto stmt = std::make_unique<Statement>(); stmt->node = ClsStmt{}; return stmt; }
         if (match(TokenType::KeywordLocate)) { return parse_locate_statement(); }
+        if (match(TokenType::KeywordWidth)) { return parse_width_statement(); }
         if (match(TokenType::KeywordColor)) { return parse_color_statement(); }
         if (match(TokenType::KeywordBeep)) { auto stmt = std::make_unique<Statement>(); stmt->node = BeepStmt{}; return stmt; }
         if (match(TokenType::KeywordScreen)) { return parse_screen_statement(); }
         if (match(TokenType::KeywordKey)) { return parse_key_statement(); }
+        if (match(TokenType::KeywordPoke)) { return parse_poke_statement(); }
         if (match(TokenType::KeywordSound)) { return parse_sound_statement(); }
         if (match(TokenType::KeywordPlay)) { return parse_play_statement(); }
+        if (match(TokenType::KeywordRandomize)) {
+            auto stmt = std::make_unique<Statement>();
+            RandomizeStmt s;
+            if (!check(TokenType::EndOfLine) && !check(TokenType::Colon)) {
+                s.seed = parse_expression();
+            }
+            stmt->node = std::move(s);
+            return stmt;
+        }
         if (match(TokenType::KeywordPset)) { return parse_pset_statement(); }
         if (match(TokenType::KeywordCircle)) { return parse_circle_statement(); }
 
@@ -471,14 +556,14 @@ private:
                 if (check(TokenType::Identifier)) {
                     const auto mode = peek().lexeme;
                     if (mode == "B") {
-                        advance();
+                        (void)advance();
                         s.box = true;
                     } else if (mode == "BF") {
-                        advance();
+                        (void)advance();
                         s.box = true;
                         s.fill = true;
                     } else if (mode == "F") {
-                        advance();
+                        (void)advance();
                         s.fill = true;
                     }
                 }
@@ -512,6 +597,14 @@ private:
                 }
             }
         }
+        stmt->node = std::move(s);
+        return stmt;
+    }
+
+    [[nodiscard]] auto parse_width_statement() -> StmtPtr {
+        auto stmt = std::make_unique<Statement>();
+        WidthStmt s;
+        s.columns = parse_expression();
         stmt->node = std::move(s);
         return stmt;
     }
@@ -570,11 +663,21 @@ private:
         if (match(TokenType::KeywordOn)) {
             s.enabled = true;
         } else if (check(TokenType::Identifier) && peek().lexeme == "OFF") {
-            advance();
+            (void)advance();
             s.enabled = false;
         } else {
             throw std::runtime_error("Expected ON or OFF after KEY");
         }
+        stmt->node = std::move(s);
+        return stmt;
+    }
+
+    [[nodiscard]] auto parse_poke_statement() -> StmtPtr {
+        auto stmt = std::make_unique<Statement>();
+        PokeStmt s;
+        s.address = parse_expression();
+        (void)consume(TokenType::Comma, "Expected ',' after POKE address");
+        s.value = parse_expression();
         stmt->node = std::move(s);
         return stmt;
     }
@@ -754,6 +857,13 @@ private:
     }
 
     [[nodiscard]] auto parse_on_statement() -> StmtPtr {
+        if (match(TokenType::KeywordError)) {
+            auto stmt = std::make_unique<Statement>();
+            (void)consume(TokenType::KeywordGoto, "Expected GOTO after ON ERROR");
+            stmt->node = OnErrorGotoStmt{std::stoi(consume_any_number("Expected line number after ON ERROR GOTO").lexeme)};
+            return stmt;
+        }
+
         auto selector = parse_expression();
         if (match(TokenType::KeywordGoto)) {
             auto stmt = std::make_unique<Statement>();
@@ -812,6 +922,27 @@ private:
         return ranges;
     }
 
+    [[nodiscard]] auto parse_def_fn_statement() -> StmtPtr {
+        auto stmt = std::make_unique<Statement>();
+        DefFnStmt s;
+        s.name = consume(TokenType::Identifier, "Expected FN name after DEF").lexeme;
+        if (s.name.rfind("FN", 0) != 0) {
+            throw std::runtime_error("DEF function name must start with FN");
+        }
+        (void)consume(TokenType::LeftParen, "Expected '(' after DEF FN name");
+        if (!check(TokenType::RightParen)) {
+            s.parameters.push_back(consume(TokenType::Identifier, "Expected DEF FN parameter").lexeme);
+            while (match(TokenType::Comma)) {
+                s.parameters.push_back(consume(TokenType::Identifier, "Expected DEF FN parameter after comma").lexeme);
+            }
+        }
+        (void)consume(TokenType::RightParen, "Expected ')' after DEF FN parameters");
+        (void)consume(TokenType::Equal, "Expected '=' in DEF FN statement");
+        s.body = parse_expression();
+        stmt->node = std::move(s);
+        return stmt;
+    }
+
     [[nodiscard]] auto parse_variable_reference() -> VariableRef {
         VariableRef ref;
         ref.name = consume(TokenType::Identifier, "Expected variable name").lexeme;
@@ -831,6 +962,16 @@ private:
         s.target = parse_variable_reference();
         (void)consume(TokenType::Equal, "Expected '=' in assignment");
         s.value = parse_expression();
+        stmt->node = std::move(s);
+        return stmt;
+    }
+
+    [[nodiscard]] auto parse_swap_statement() -> StmtPtr {
+        auto stmt = std::make_unique<Statement>();
+        SwapStmt s;
+        s.left = parse_variable_reference();
+        (void)consume(TokenType::Comma, "Expected ',' after first SWAP variable");
+        s.right = parse_variable_reference();
         stmt->node = std::move(s);
         return stmt;
     }
@@ -885,13 +1026,24 @@ private:
     }
 
     [[nodiscard]] auto parse_factor() -> ExprPtr {
-        auto expr = parse_unary();
-        while (match(TokenType::Star) || match(TokenType::Slash)) {
+        auto expr = parse_power();
+        while (match(TokenType::Star) || match(TokenType::Slash) || match(TokenType::Backslash) || match(TokenType::KeywordMod)) {
             const auto op = previous().lexeme;
-            auto right = parse_unary();
+            auto right = parse_power();
             auto out = std::make_unique<Expr>();
             out->node = BinaryExpr{std::move(expr), op, std::move(right)};
             expr = std::move(out);
+        }
+        return expr;
+    }
+
+    [[nodiscard]] auto parse_power() -> ExprPtr {
+        auto expr = parse_unary();
+        if (match(TokenType::Caret)) {
+            const auto op = previous().lexeme;
+            auto out = std::make_unique<Expr>();
+            out->node = BinaryExpr{std::move(expr), op, parse_power()};
+            return out;
         }
         return expr;
     }
@@ -917,7 +1069,7 @@ private:
             expr->node = StringExpr{previous().lexeme};
             return expr;
         }
-        if (check(TokenType::Identifier)) {
+        if (check(TokenType::Identifier) || check(TokenType::KeywordLen)) {
             const auto name = advance().lexeme;
             if (match(TokenType::LeftParen)) {
                 std::vector<ExprPtr> args;
@@ -929,7 +1081,7 @@ private:
                 }
                 (void)consume(TokenType::RightParen, "Expected ')' after argument list");
                 auto expr = std::make_unique<Expr>();
-                if (is_intrinsic_function_name(name)) {
+                if (is_intrinsic_function_name(name) || is_user_function_name(name)) {
                     FunctionCallExpr call;
                     call.name = name;
                     call.arguments = std::move(args);
@@ -965,11 +1117,17 @@ private:
                name == "LEFT$" || name == "RIGHT$" || name == "MID$" ||
                name == "CHR$" || name == "ASC" || name == "STR$" ||
                name == "SPC" || name == "TAB" || name == "SPACE$" ||
-               name == "STRING$" || name == "INSTR" || name == "POS" || name == "EOF" || name == "LOF" || name == "LOC" || name == "INKEY$" || name == "POINT" || name == "PMAP" || name == "RND" || name == "SQR" || name == "SIN" || name == "COS" || name == "TAN" || name == "ATN";
+               name == "STRING$" || name == "INSTR" || name == "UCASE$" || name == "LCASE$" ||
+               name == "LTRIM$" || name == "RTRIM$" || name == "HEX$" || name == "OCT$" ||
+               name == "POS" || name == "EOF" || name == "LOF" || name == "LOC" || name == "ERR" || name == "ERL" || name == "INKEY$" || name == "INPUT$" || name == "PEEK" || name == "POINT" || name == "PMAP" || name == "RND" || name == "DATE$" || name == "TIME$" || name == "TIMER" || name == "SQR" || name == "SIN" || name == "COS" || name == "TAN" || name == "ATN" || name == "SGN" || name == "EXP" || name == "LOG" || name == "FIX" || name == "CINT" || name == "CLNG" || name == "CSNG" || name == "CDBL";
     }
 
     [[nodiscard]] static auto is_zero_arg_intrinsic_function_name(const std::string& name) -> bool {
-        return name == "INKEY$" || name == "RND";
+        return name == "ERR" || name == "ERL" || name == "INKEY$" || name == "RND" || name == "DATE$" || name == "TIME$" || name == "TIMER";
+    }
+
+    [[nodiscard]] static auto is_user_function_name(const std::string& name) -> bool {
+        return name.rfind("FN", 0) == 0 && name.size() > 2;
     }
 
     [[nodiscard]] auto looks_like_assignment() const -> bool {
@@ -1005,6 +1163,16 @@ private:
         return false;
     }
 
+    void synchronize() {
+        const auto start = current_;
+        while (!check(TokenType::EndOfLine) && !check(TokenType::Colon)) {
+            (void)advance();
+        }
+        if (current_ == start && !check(TokenType::EndOfLine) && !check(TokenType::Colon)) {
+            (void)advance();
+        }
+    }
+
     [[nodiscard]] auto check(TokenType type) const -> bool { return peek().type == type; }
     [[nodiscard]] auto advance() -> const Token& { return tokens_.at(current_++); }
     [[nodiscard]] auto previous() const -> const Token& { return tokens_.at(current_ - 1); }
@@ -1034,6 +1202,10 @@ private:
 
 auto Parser::parse_line(const std::vector<Token>& tokens, std::string original_text) const -> ParsedLine {
     return LineParser(tokens, std::move(original_text)).parse();
+}
+
+auto Parser::parse_line_recovering(const std::vector<Token>& tokens, std::string original_text) const -> ParseResult {
+    return LineParser(tokens, std::move(original_text)).parse_recovering();
 }
 
 } // namespace gwbasic

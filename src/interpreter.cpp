@@ -1,6 +1,12 @@
 #include "gwbasic/interpreter.hpp"
 
+#include <algorithm>
+#include <chrono>
+#include <cctype>
 #include <cmath>
+#include <ctime>
+#include <fstream>
+#include <iomanip>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -13,6 +19,17 @@ struct Overload : Ts... { using Ts::operator()...; };
 template <typename... Ts>
 Overload(Ts...) -> Overload<Ts...>;
 
+class BasicRuntimeError final : public std::runtime_error {
+public:
+    BasicRuntimeError(int code, const std::string& message)
+        : std::runtime_error(message), code_(code) {}
+
+    [[nodiscard]] auto code() const -> int { return code_; }
+
+private:
+    int code_{};
+};
+
 [[nodiscard]] auto parse_input_value(const std::string& raw, bool is_string) -> Value {
     if (is_string) {
         return Value{raw};
@@ -22,6 +39,119 @@ Overload(Ts...) -> Overload<Ts...>;
     } catch (const std::exception&) {
         throw std::runtime_error("Invalid numeric input: '" + raw + "'");
     }
+}
+
+[[nodiscard]] auto uppercase_ascii(std::string text) -> std::string {
+    for (auto& ch : text) {
+        ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    }
+    return text;
+}
+
+[[nodiscard]] auto lowercase_ascii(std::string text) -> std::string {
+    for (auto& ch : text) {
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return text;
+}
+
+[[nodiscard]] auto ltrim_ascii(std::string text) -> std::string {
+    const auto first = text.find_first_not_of(" \t\r\n\f\v");
+    return first == std::string::npos ? std::string{} : text.substr(first);
+}
+
+[[nodiscard]] auto rtrim_ascii(std::string text) -> std::string {
+    const auto last = text.find_last_not_of(" \t\r\n\f\v");
+    return last == std::string::npos ? std::string{} : text.substr(0, last + 1);
+}
+
+[[nodiscard]] auto integer_to_base_string(double value, int base) -> std::string {
+    auto number = static_cast<long long>(std::llround(std::trunc(value)));
+    if (number == 0) {
+        return "0";
+    }
+    const bool negative = number < 0;
+    unsigned long long magnitude = negative
+        ? static_cast<unsigned long long>(-(number + 1)) + 1ULL
+        : static_cast<unsigned long long>(number);
+    std::string digits;
+    while (magnitude > 0) {
+        const auto digit = static_cast<int>(magnitude % static_cast<unsigned long long>(base));
+        digits.push_back(static_cast<char>(digit < 10 ? '0' + digit : 'A' + digit - 10));
+        magnitude /= static_cast<unsigned long long>(base);
+    }
+    if (negative) {
+        digits.push_back('-');
+    }
+    std::reverse(digits.begin(), digits.end());
+    return digits;
+}
+
+[[nodiscard]] auto current_local_time() -> std::tm {
+    const auto now = std::time(nullptr);
+    std::tm local{};
+#if defined(_WIN32)
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    return local;
+}
+
+[[nodiscard]] auto format_local_date() -> std::string {
+    const auto local = current_local_time();
+    std::ostringstream out;
+    out << std::setfill('0') << std::setw(2) << (local.tm_mon + 1) << '-'
+        << std::setw(2) << local.tm_mday << '-'
+        << std::setw(4) << (local.tm_year + 1900);
+    return out.str();
+}
+
+[[nodiscard]] auto format_local_time() -> std::string {
+    const auto local = current_local_time();
+    std::ostringstream out;
+    out << std::setfill('0') << std::setw(2) << local.tm_hour << ':'
+        << std::setw(2) << local.tm_min << ':'
+        << std::setw(2) << local.tm_sec;
+    return out.str();
+}
+
+[[nodiscard]] auto seconds_since_midnight() -> double {
+    const auto local = current_local_time();
+    return static_cast<double>(local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec);
+}
+
+[[nodiscard]] auto clone_expr(const Expr& expr) -> ExprPtr;
+
+[[nodiscard]] auto clone_variable_ref(const VariableRef& ref) -> VariableRef {
+    VariableRef copy;
+    copy.name = ref.name;
+    copy.indices.reserve(ref.indices.size());
+    for (const auto& index : ref.indices) {
+        copy.indices.push_back(clone_expr(*index));
+    }
+    return copy;
+}
+
+[[nodiscard]] auto clone_expr(const Expr& expr) -> ExprPtr {
+    auto out = std::make_unique<Expr>();
+    out->node = std::visit(Overload{
+        [](const NumberExpr& node) -> Expr::Variant { return node; },
+        [](const StringExpr& node) -> Expr::Variant { return node; },
+        [](const VariableExpr& node) -> Expr::Variant { return VariableExpr{clone_variable_ref(node.ref)}; },
+        [](const FunctionCallExpr& node) -> Expr::Variant {
+            FunctionCallExpr copy;
+            copy.name = node.name;
+            copy.arguments.reserve(node.arguments.size());
+            for (const auto& argument : node.arguments) {
+                copy.arguments.push_back(clone_expr(*argument));
+            }
+            return copy;
+        },
+        [](const UnaryExpr& node) -> Expr::Variant { return UnaryExpr{node.op, clone_expr(*node.operand)}; },
+        [](const BinaryExpr& node) -> Expr::Variant { return BinaryExpr{clone_expr(*node.left), node.op, clone_expr(*node.right)}; }
+    }, expr.node);
+    return out;
 }
 
 
@@ -283,7 +413,14 @@ void Interpreter::execute_program(int start_line, std::size_t start_statement_in
     if (reset_runtime_state) {
         runtime_.clear_variables();
         runtime_.restore_data();
+        user_functions_.clear();
+        user_function_locals_.clear();
         continuation_point_.reset();
+        error_handler_line_.reset();
+        error_resume_point_.reset();
+        last_error_code_ = 0;
+        last_error_line_ = 0;
+        handling_error_ = false;
     }
 
     int current_line = start_line;
@@ -298,12 +435,12 @@ void Interpreter::execute_program(int start_line, std::size_t start_statement_in
         if (runtime_.stop_requested()) {
             break;
         }
-        const auto it = program_.lines().find(current_line);
-        if (it == program_.lines().end()) {
+        const auto* line = program_.find_line(current_line);
+        if (line == nullptr) {
             throw std::runtime_error("No such line: " + std::to_string(current_line));
         }
 
-        if (statement_index >= it->second.statements.size()) {
+        if (statement_index >= line->statements.size()) {
             const auto next = next_line_number(current_line);
             if (next < 0) {
                 break;
@@ -314,9 +451,22 @@ void Interpreter::execute_program(int start_line, std::size_t start_statement_in
         }
 
         try {
-            execute(*it->second.statements.at(statement_index), current_line, statement_index, running);
+            execute(*line->statements.at(statement_index), current_line, statement_index, running);
         } catch (const std::exception& ex) {
-            throw std::runtime_error("At BASIC line " + std::to_string(it->first) + ": " + ex.what());
+            if (error_handler_line_.has_value() && *error_handler_line_ > 0 && !handling_error_) {
+                last_error_code_ = 5;
+                if (const auto* basic_error = dynamic_cast<const BasicRuntimeError*>(&ex)) {
+                    last_error_code_ = basic_error->code();
+                }
+                last_error_line_ = line->number;
+                error_resume_point_ = std::pair<int, std::size_t>{line->number, statement_index};
+                runtime_.clear_control_stacks();
+                current_line = *error_handler_line_;
+                statement_index = 0;
+                handling_error_ = true;
+                continue;
+            }
+            throw std::runtime_error("At BASIC line " + std::to_string(line->number) + ": " + ex.what());
         }
     }
 }
@@ -329,8 +479,55 @@ void Interpreter::list() const {
 
 void Interpreter::clear_program() {
     program_.clear();
+    user_functions_.clear();
+    user_function_locals_.clear();
     continuation_point_.reset();
     rebuild_data_cache();
+}
+
+void Interpreter::load_program(const std::string& path) {
+    std::ifstream in(path);
+    if (!in) {
+        throw std::runtime_error("Unable to load BASIC file: " + path);
+    }
+    clear_program();
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (!line.empty()) {
+            submit(line);
+        }
+    }
+}
+
+void Interpreter::save_program(const std::string& path) const {
+    std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("Unable to save BASIC file: " + path);
+    }
+    for (const auto& [line, program_line] : program_.lines()) {
+        (void)line;
+        out << program_line.source << '\n';
+    }
+}
+
+void Interpreter::define_user_function(const DefFnStmt& stmt) {
+    UserFunctionDefinition definition;
+    definition.parameters = stmt.parameters;
+    definition.body = clone_expr(*stmt.body);
+    user_functions_[stmt.name] = std::move(definition);
+}
+
+auto Interpreter::lookup_local_variable(const std::string& name) const -> std::optional<Value> {
+    for (auto it = user_function_locals_.rbegin(); it != user_function_locals_.rend(); ++it) {
+        const auto found = it->find(name);
+        if (found != it->end()) {
+            return found->second;
+        }
+    }
+    return std::nullopt;
 }
 
 auto Interpreter::eval(const Expr& expr) -> Value {
@@ -339,6 +536,9 @@ auto Interpreter::eval(const Expr& expr) -> Value {
         [&](const StringExpr& node) -> Value { return Value{node.value}; },
         [&](const VariableExpr& node) -> Value {
             if (node.ref.indices.empty()) {
+                if (auto local = lookup_local_variable(node.ref.name); local.has_value()) {
+                    return *local;
+                }
                 return runtime_.get_variable(node.ref.name);
             }
             std::vector<int> indices;
@@ -371,12 +571,29 @@ auto Interpreter::eval(const Expr& expr) -> Value {
             }
             if (node.op == "-") { return Value{left.as_number() - right.as_number()}; }
             if (node.op == "*") { return Value{left.as_number() * right.as_number()}; }
+            if (node.op == "^") { return Value{std::pow(left.as_number(), right.as_number())}; }
             if (node.op == "/") {
                 const auto divisor = right.as_number();
                 if (std::fabs(divisor) < 1e-12) {
-                    throw std::runtime_error("Division by zero");
+                    throw BasicRuntimeError(11, "Division by zero");
                 }
                 return Value{left.as_number() / divisor};
+            }
+            if (node.op == "\\") {
+                const auto divisor = static_cast<long long>(std::llround(std::trunc(right.as_number())));
+                if (divisor == 0) {
+                    throw BasicRuntimeError(11, "Division by zero");
+                }
+                const auto dividend = static_cast<long long>(std::llround(std::trunc(left.as_number())));
+                return Value{static_cast<double>(dividend / divisor)};
+            }
+            if (node.op == "MOD") {
+                const auto divisor = static_cast<long long>(std::llround(std::trunc(right.as_number())));
+                if (divisor == 0) {
+                    throw BasicRuntimeError(11, "Division by zero");
+                }
+                const auto dividend = static_cast<long long>(std::llround(std::trunc(left.as_number())));
+                return Value{static_cast<double>(dividend % divisor)};
             }
             if (node.op == "=") {
                 if (left.is_string() || right.is_string()) {
@@ -549,6 +766,30 @@ auto Interpreter::eval_function(const FunctionCallExpr& expr) -> Value {
         const auto pos = haystack.find(needle, begin);
         return Value{pos == std::string::npos ? 0.0 : static_cast<double>(pos + 1)};
     }
+    if (expr.name == "UCASE$") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error("UCASE$ expects 1 argument"); }
+        return Value{uppercase_ascii(eval(*expr.arguments[0]).as_string())};
+    }
+    if (expr.name == "LCASE$") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error("LCASE$ expects 1 argument"); }
+        return Value{lowercase_ascii(eval(*expr.arguments[0]).as_string())};
+    }
+    if (expr.name == "LTRIM$") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error("LTRIM$ expects 1 argument"); }
+        return Value{ltrim_ascii(eval(*expr.arguments[0]).as_string())};
+    }
+    if (expr.name == "RTRIM$") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error("RTRIM$ expects 1 argument"); }
+        return Value{rtrim_ascii(eval(*expr.arguments[0]).as_string())};
+    }
+    if (expr.name == "HEX$") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error("HEX$ expects 1 argument"); }
+        return Value{integer_to_base_string(eval(*expr.arguments[0]).as_number(), 16)};
+    }
+    if (expr.name == "OCT$") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error("OCT$ expects 1 argument"); }
+        return Value{integer_to_base_string(eval(*expr.arguments[0]).as_number(), 8)};
+    }
     if (expr.name == "POS") {
         if (expr.arguments.size() != 1) { throw std::runtime_error("POS expects 1 argument"); }
         (void)eval(*expr.arguments[0]);
@@ -568,6 +809,26 @@ auto Interpreter::eval_function(const FunctionCallExpr& expr) -> Value {
         if (expr.arguments.size() != 1) { throw std::runtime_error("LOC expects 1 argument"); }
         const auto file_number = static_cast<int>(std::trunc(eval(*expr.arguments[0]).as_number()));
         return Value{static_cast<double>(runtime_.file_loc(file_number))};
+    }
+    if (expr.name == "ERR") {
+        if (!expr.arguments.empty()) { throw std::runtime_error("ERR expects 0 arguments"); }
+        return Value{static_cast<double>(last_error_code_)};
+    }
+    if (expr.name == "ERL") {
+        if (!expr.arguments.empty()) { throw std::runtime_error("ERL expects 0 arguments"); }
+        return Value{static_cast<double>(last_error_line_)};
+    }
+    if (expr.name == "DATE$") {
+        if (!expr.arguments.empty()) { throw std::runtime_error("DATE$ expects 0 arguments"); }
+        return Value{format_local_date()};
+    }
+    if (expr.name == "TIME$") {
+        if (!expr.arguments.empty()) { throw std::runtime_error("TIME$ expects 0 arguments"); }
+        return Value{format_local_time()};
+    }
+    if (expr.name == "TIMER") {
+        if (!expr.arguments.empty()) { throw std::runtime_error("TIMER expects 0 arguments"); }
+        return Value{seconds_since_midnight()};
     }
     if (expr.name == "SQR") {
         if (expr.arguments.size() != 1) { throw std::runtime_error("SQR expects 1 argument"); }
@@ -591,9 +852,48 @@ auto Interpreter::eval_function(const FunctionCallExpr& expr) -> Value {
         if (expr.arguments.size() != 1) { throw std::runtime_error("ATN expects 1 argument"); }
         return Value{std::atan(eval(*expr.arguments[0]).as_number())};
     }
+    if (expr.name == "SGN") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error("SGN expects 1 argument"); }
+        const auto value = eval(*expr.arguments[0]).as_number();
+        if (value > 0.0) { return Value{1.0}; }
+        if (value < 0.0) { return Value{-1.0}; }
+        return Value{0.0};
+    }
+    if (expr.name == "EXP") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error("EXP expects 1 argument"); }
+        return Value{std::exp(eval(*expr.arguments[0]).as_number())};
+    }
+    if (expr.name == "LOG") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error("LOG expects 1 argument"); }
+        const auto value = eval(*expr.arguments[0]).as_number();
+        if (value <= 0.0) { throw std::runtime_error("LOG domain error"); }
+        return Value{std::log(value)};
+    }
+    if (expr.name == "FIX") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error("FIX expects 1 argument"); }
+        return Value{std::trunc(eval(*expr.arguments[0]).as_number())};
+    }
+    if (expr.name == "CINT" || expr.name == "CLNG") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error(expr.name + " expects 1 argument"); }
+        return Value{static_cast<double>(std::llround(eval(*expr.arguments[0]).as_number()))};
+    }
+    if (expr.name == "CSNG" || expr.name == "CDBL") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error(expr.name + " expects 1 argument"); }
+        return Value{eval(*expr.arguments[0]).as_number()};
+    }
     if (expr.name == "INKEY$") {
         if (!expr.arguments.empty()) { throw std::runtime_error("INKEY$ expects 0 arguments"); }
         return Value{runtime_.read_key()};
+    }
+    if (expr.name == "INPUT$") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error("INPUT$ expects 1 argument"); }
+        const auto count = static_cast<int>(std::trunc(eval(*expr.arguments[0]).as_number()));
+        if (count < 0) { throw std::runtime_error("INPUT$ length cannot be negative"); }
+        return Value{runtime_.read_chars(static_cast<std::size_t>(count))};
+    }
+    if (expr.name == "PEEK") {
+        if (expr.arguments.size() != 1) { throw std::runtime_error("PEEK expects 1 argument"); }
+        return Value{runtime_.peek(static_cast<int>(std::trunc(eval(*expr.arguments[0]).as_number())))};
     }
     if (expr.name == "POINT") {
         if (expr.arguments.size() != 2) { throw std::runtime_error("POINT expects 2 arguments"); }
@@ -606,6 +906,29 @@ auto Interpreter::eval_function(const FunctionCallExpr& expr) -> Value {
         const auto coordinate = eval(*expr.arguments[0]).as_number();
         const auto mode = static_cast<int>(std::trunc(eval(*expr.arguments[1]).as_number()));
         return Value{runtime_.pmap(coordinate, mode)};
+    }
+    if (expr.name.rfind("FN", 0) == 0) {
+        const auto found = user_functions_.find(expr.name);
+        if (found == user_functions_.end()) {
+            throw std::runtime_error("Undefined user function: " + expr.name);
+        }
+        const auto& definition = found->second;
+        if (expr.arguments.size() != definition.parameters.size()) {
+            throw std::runtime_error(expr.name + " expects " + std::to_string(definition.parameters.size()) + " argument(s)");
+        }
+        UserFunctionLocals locals;
+        for (std::size_t i = 0; i < definition.parameters.size(); ++i) {
+            locals.emplace(definition.parameters[i], eval(*expr.arguments[i]));
+        }
+        user_function_locals_.push_back(std::move(locals));
+        try {
+            auto result = eval(*definition.body);
+            user_function_locals_.pop_back();
+            return result;
+        } catch (...) {
+            user_function_locals_.pop_back();
+            throw;
+        }
     }
     throw std::runtime_error("Unknown function: " + expr.name);
 }
@@ -622,6 +945,18 @@ void Interpreter::execute(const Statement& stmt, int& current_line, std::size_t&
             indices.push_back(static_cast<int>(eval(*index_expr).as_number()));
         }
         runtime_.set_array_value(target.name, indices, std::move(value));
+    };
+
+    auto read_target = [&](const VariableRef& target) -> Value {
+        if (target.indices.empty()) {
+            return runtime_.get_variable(target.name);
+        }
+        std::vector<int> indices;
+        indices.reserve(target.indices.size());
+        for (const auto& index_expr : target.indices) {
+            indices.push_back(static_cast<int>(eval(*index_expr).as_number()));
+        }
+        return runtime_.get_array_value(target.name, indices);
     };
 
     auto graphics_block_key = [&](const VariableRef& target) -> std::string {
@@ -835,6 +1170,35 @@ void Interpreter::execute(const Statement& stmt, int& current_line, std::size_t&
         [&](const OnGosubStmt& node) {
             jump_to_selected_target(node.targets, eval(*node.selector).as_number(), current_line, statement_index, true);
         },
+        [&](const OnErrorGotoStmt& node) {
+            error_handler_line_ = node.target_line > 0 ? std::optional<int>{node.target_line} : std::nullopt;
+            if (!error_handler_line_.has_value()) {
+                error_resume_point_.reset();
+                handling_error_ = false;
+            }
+            ++statement_index;
+        },
+        [&](const ErrorStmt& node) {
+            const auto code = static_cast<int>(std::trunc(eval(*node.code).as_number()));
+            if (code <= 0) {
+                throw BasicRuntimeError(5, "Invalid ERROR code");
+            }
+            throw BasicRuntimeError(code, "BASIC error " + std::to_string(code));
+        },
+        [&](const ResumeStmt& node) {
+            if (!error_resume_point_.has_value()) {
+                throw std::runtime_error("RESUME without error");
+            }
+            if (node.target_line.has_value() && *node.target_line > 0) {
+                current_line = *node.target_line;
+                statement_index = 0;
+            } else {
+                current_line = error_resume_point_->first;
+                statement_index = error_resume_point_->second + (node.next ? 1U : 0U);
+            }
+            error_resume_point_.reset();
+            handling_error_ = false;
+        },
         [&](const ReturnStmt&) {
             auto target = runtime_.pop_return();
             if (!target.has_value()) {
@@ -923,6 +1287,20 @@ void Interpreter::execute(const Statement& stmt, int& current_line, std::size_t&
             }
             ++statement_index;
         },
+        [&](const EraseStmt& node) {
+            for (const auto& name : node.names) {
+                runtime_.erase_array(name);
+            }
+            ++statement_index;
+        },
+        [&](const OptionBaseStmt& node) {
+            runtime_.set_option_base(node.base);
+            ++statement_index;
+        },
+        [&](const DefFnStmt& node) {
+            define_user_function(node);
+            ++statement_index;
+        },
         [&](const DefIntStmt& node) {
             for (const auto& range : node.ranges) {
                 runtime_.set_default_numeric_range(range.start, range.end, VariableKind::Integer);
@@ -958,19 +1336,31 @@ void Interpreter::execute(const Statement& stmt, int& current_line, std::size_t&
             current_line = continuation_point_->first;
             statement_index = continuation_point_->second;
         },
-        [&](const EndStmt&) { runtime_.close_file(); continuation_point_.reset(); running = false; },
+        [&](const EndStmt&) { runtime_.close_file(); continuation_point_.reset(); error_resume_point_.reset(); handling_error_ = false; running = false; },
         [&](const RemStmt&) { ++statement_index; },
         [&](const ListStmt&) { list(); ++statement_index; },
         [&](const RunStmt&) { run(); ++statement_index; },
+        [&](const LoadStmt& node) { load_program(eval(*node.path).as_string()); running = false; },
+        [&](const SaveStmt& node) { save_program(eval(*node.path).as_string()); ++statement_index; },
         [&](const NewStmt&) { clear_program(); ++statement_index; },
         [&](const ClearStmt&) { runtime_.clear_variables(); runtime_.restore_data(); runtime_.close_file(); ++statement_index; },
+        [&](const FilesStmt& node) { runtime_.list_files(node.pattern.has_value() ? eval(*node.pattern->get()).as_string() : "*"); ++statement_index; },
         [&](const KillStmt& node) { runtime_.delete_file(eval(*node.path).as_string()); ++statement_index; },
         [&](const NameStmt& node) { runtime_.rename_file(eval(*node.old_path).as_string(), eval(*node.new_path).as_string()); ++statement_index; },
         [&](const MkdirStmt& node) { runtime_.create_directory(eval(*node.path).as_string()); ++statement_index; },
+        [&](const ChdirStmt& node) { runtime_.change_directory(eval(*node.path).as_string()); ++statement_index; },
         [&](const RmdirStmt& node) { runtime_.remove_directory(eval(*node.path).as_string()); ++statement_index; },
         [&](const LsetStmt& node) { runtime_.set_record_field(node.target.name, eval(*node.value).as_string(), false); ++statement_index; },
         [&](const RsetStmt& node) { runtime_.set_record_field(node.target.name, eval(*node.value).as_string(), true); ++statement_index; },
+        [&](const SwapStmt& node) {
+            auto left = read_target(node.left);
+            auto right = read_target(node.right);
+            assign_target(node.left, std::move(right));
+            assign_target(node.right, std::move(left));
+            ++statement_index;
+        },
         [&](const ClsStmt&) { runtime_.cls(); ++statement_index; },
+        [&](const WidthStmt& node) { runtime_.set_text_width(static_cast<int>(eval(*node.columns).as_number())); ++statement_index; },
         [&](const LocateStmt& node) {
             auto to_opt_int = [&](const std::optional<ExprPtr>& expr) -> std::optional<int> {
                 if (!expr.has_value()) {
@@ -1003,8 +1393,20 @@ void Interpreter::execute(const Statement& stmt, int& current_line, std::size_t&
             ++statement_index;
         },
         [&](const KeyStmt& node) { runtime_.set_key_display(node.enabled); ++statement_index; },
+        [&](const PokeStmt& node) {
+            runtime_.poke(static_cast<int>(std::trunc(eval(*node.address).as_number())), static_cast<int>(std::trunc(eval(*node.value).as_number())));
+            ++statement_index;
+        },
         [&](const SoundStmt& node) { runtime_.sound(eval(*node.frequency).as_number(), eval(*node.duration).as_number()); ++statement_index; },
         [&](const PlayStmt& node) { runtime_.play(eval(*node.sequence).as_string()); ++statement_index; },
+        [&](const RandomizeStmt& node) {
+            if (node.seed.has_value()) {
+                rng_.seed(static_cast<std::mt19937::result_type>(std::llround(eval(*node.seed->get()).as_number())));
+            } else {
+                rng_.seed(std::random_device{}());
+            }
+            ++statement_index;
+        },
         [&](const PsetStmt& node) {
             std::optional<int> color;
             if (node.color.has_value()) color = static_cast<int>(std::trunc(eval(**node.color).as_number()));

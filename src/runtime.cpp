@@ -5,9 +5,11 @@
 #include <cmath>
 #include <numeric>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <filesystem>
+#include <regex>
 
 namespace gwbasic {
 namespace {
@@ -59,6 +61,25 @@ auto split_csv_record(const std::string& line) -> std::vector<std::string> {
     }
     out.push_back(current);
     return out;
+}
+
+[[nodiscard]] auto wildcard_to_regex(const std::string& pattern) -> std::regex {
+    std::string out = "^";
+    for (char ch : pattern) {
+        switch (ch) {
+            case '*': out += ".*"; break;
+            case '?': out += '.'; break;
+            case '.': case '\\': case '+': case '^': case '$': case '(': case ')': case '[': case ']': case '{': case '}': case '|':
+                out.push_back('\\');
+                out.push_back(ch);
+                break;
+            default:
+                out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+                break;
+        }
+    }
+    out += '$';
+    return std::regex(out);
 }
 
 
@@ -144,15 +165,27 @@ void Program::store(ParsedLine line) {
     }
     if (line.statements.empty()) {
         lines_.erase(*line.line_number);
+        line_index_.erase(*line.line_number);
         return;
     }
-    lines_[*line.line_number] = ProgramLine{*line.line_number, std::move(line.statements), std::move(line.original_text)};
+    auto [it, inserted] = lines_.insert_or_assign(*line.line_number, ProgramLine{*line.line_number, std::move(line.statements), std::move(line.original_text)});
+    (void)inserted;
+    line_index_[*line.line_number] = &it->second;
 }
 
-void Program::clear() { lines_.clear(); }
+void Program::clear() {
+    lines_.clear();
+    line_index_.clear();
+}
 auto Program::empty() const -> bool { return lines_.empty(); }
 auto Program::lines() const -> const std::map<int, ProgramLine>& { return lines_; }
-auto Program::has_line(int line) const -> bool { return lines_.contains(line); }
+auto Program::find_line(int line) const -> const ProgramLine* {
+    if (const auto it = line_index_.find(line); it != line_index_.end()) {
+        return it->second;
+    }
+    return nullptr;
+}
+auto Program::has_line(int line) const -> bool { return line_index_.contains(line); }
 
 RuntimeContext::RuntimeContext(Output output, Input input, KeyInput key_input) : output_(std::move(output)), input_(std::move(input)), key_input_(std::move(key_input)) {
     default_types_.fill(VariableKind::Numeric);
@@ -200,7 +233,7 @@ void RuntimeContext::draw_glyph_cell(int column, int row, char ch, int fg, int b
 }
 
 void RuntimeContext::render_text(const std::string& text) const {
-    const int cols = std::max(1, graphics_width_ / 8);
+    const int cols = std::max(1, std::min(text_width_, graphics_width_ / 8));
     const int rows = std::max(1, graphics_height_ / 8);
     for (char ch : text) {
         if (ch == '\r') continue;
@@ -257,6 +290,23 @@ auto RuntimeContext::read_line() const -> std::string {
     return input_ ? input_() : std::string{};
 }
 
+auto RuntimeContext::read_chars(std::size_t count) const -> std::string {
+    std::string out;
+    out.reserve(count);
+    while (out.size() < count) {
+        if (input_char_buffer_.empty()) {
+            input_char_buffer_ = read_line();
+            if (input_char_buffer_.empty()) {
+                break;
+            }
+        }
+        const auto take = std::min(count - out.size(), input_char_buffer_.size());
+        out.append(input_char_buffer_, 0, take);
+        input_char_buffer_.erase(0, take);
+    }
+    return out;
+}
+
 void RuntimeContext::tick_engine() const {
     flush_graphics();
     if (engine_tick_) {
@@ -265,8 +315,11 @@ void RuntimeContext::tick_engine() const {
 }
 
 void RuntimeContext::flush_graphics() const {
-    if (graphics_dirty_) {
+    if (graphics_dirty_ && screen_mode_ != 0) {
         present_graphics();
+    } else if (screen_mode_ == 0) {
+        graphics_dirty_ = false;
+        graphics_dirty_ops_ = 0;
     }
 }
 
@@ -286,7 +339,7 @@ auto RuntimeContext::read_key() const -> std::string {
 
 void RuntimeContext::mark_graphics_dirty(bool immediate) const {
     graphics_dirty_ = true;
-    if (!graphics_presenter_) {
+    if (!graphics_presenter_ || screen_mode_ == 0) {
         return;
     }
     if (immediate || ++graphics_dirty_ops_ >= 2048U) {
@@ -295,7 +348,7 @@ void RuntimeContext::mark_graphics_dirty(bool immediate) const {
 }
 
 void RuntimeContext::present_graphics() const {
-    if (graphics_presenter_) {
+    if (graphics_presenter_ && screen_mode_ != 0) {
         graphics_presenter_(graphics_pixels_, graphics_width_, graphics_height_, palette_map_);
     }
     graphics_dirty_ = false;
@@ -378,11 +431,13 @@ auto RuntimeContext::get_variable(const std::string& name) const -> Value {
 void RuntimeContext::clear_variables() {
     variables_.clear();
     arrays_.clear();
+    option_base_ = 0;
     return_stack_.clear();
     for_stack_.clear();
     while_stack_.clear();
     current_print_column_ = 0;
-    std::fill(graphics_pixels_.begin(), graphics_pixels_.end(), 0);
+    input_char_buffer_.clear();
+    std::fill(graphics_pixels_.begin(), graphics_pixels_.end(), std::uint8_t{0});
     graphics_cursor_x_ = 0;
     graphics_cursor_y_ = 0;
     graphics_color_ = 15;
@@ -392,9 +447,11 @@ void RuntimeContext::clear_variables() {
     graphics_view_bottom_ = graphics_height_ - 1;
     text_row_ = 1;
     text_col_ = 1;
+    text_width_ = 80;
     text_foreground_ = 15;
     text_background_ = 0;
     cursor_visible_ = true;
+    virtual_memory_.fill(std::uint8_t{0});
     mark_graphics_dirty(true);
 }
 
@@ -403,18 +460,38 @@ void RuntimeContext::dim_array(const std::string& name, std::vector<int> dimensi
         throw std::runtime_error("DIM requires at least one dimension");
     }
     std::size_t count = 1;
+    std::vector<int> lower_bounds(dimensions.size(), option_base_);
     for (int& dim : dimensions) {
-        if (dim < 0) {
-            throw std::runtime_error("DIM dimension cannot be negative");
+        if (dim < option_base_) {
+            throw std::runtime_error("DIM upper bound is below OPTION BASE");
         }
-        dim += 1;
-        count *= static_cast<std::size_t>(dim);
+        if (dim == std::numeric_limits<int>::max()) {
+            throw std::runtime_error("DIM dimension is too large");
+        }
+        const auto extent = static_cast<std::size_t>(dim - option_base_ + 1);
+        if (extent != 0 && count > std::numeric_limits<std::size_t>::max() / extent) {
+            throw std::runtime_error("DIM dimensions are too large");
+        }
+        count *= extent;
+        dim = static_cast<int>(extent);
     }
     ArrayValue array;
+    array.lower_bounds = std::move(lower_bounds);
     array.dimensions = std::move(dimensions);
     array.kind = variable_kind(name);
     array.elements.assign(count, default_value_for_kind(array.kind));
     arrays_[name] = std::move(array);
+}
+
+void RuntimeContext::erase_array(const std::string& name) {
+    arrays_.erase(name);
+}
+
+void RuntimeContext::set_option_base(int base) {
+    if (base != 0 && base != 1) {
+        throw std::runtime_error("OPTION BASE must be 0 or 1");
+    }
+    option_base_ = base;
 }
 
 auto RuntimeContext::compute_flat_index(const ArrayValue& array, const std::vector<int>& indices) const -> std::size_t {
@@ -424,13 +501,18 @@ auto RuntimeContext::compute_flat_index(const ArrayValue& array, const std::vect
     std::size_t flat = 0;
     std::size_t stride = 1;
     for (std::size_t rev = indices.size(); rev-- > 0;) {
-        const int idx = indices[rev];
+        const int lower = rev < array.lower_bounds.size() ? array.lower_bounds[rev] : 0;
+        const int idx = indices[rev] - lower;
         const int dim = array.dimensions[rev];
         if (idx < 0 || idx >= dim) {
             throw std::runtime_error("Array index out of bounds");
         }
         flat += static_cast<std::size_t>(idx) * stride;
-        stride *= static_cast<std::size_t>(dim);
+        const auto extent = static_cast<std::size_t>(dim);
+        if (extent != 0 && stride > std::numeric_limits<std::size_t>::max() / extent) {
+            throw std::runtime_error("Array index overflow");
+        }
+        stride *= extent;
     }
     return flat;
 }
@@ -441,8 +523,8 @@ void RuntimeContext::set_array_value(const std::string& name, const std::vector<
         std::vector<int> dims;
         dims.reserve(indices.size());
         for (int index : indices) {
-            if (index < 0) {
-                throw std::runtime_error("Array index cannot be negative");
+            if (index < option_base_) {
+                throw std::runtime_error("Array index is below OPTION BASE");
             }
             dims.push_back(index);
         }
@@ -472,6 +554,12 @@ auto RuntimeContext::pop_return() -> std::optional<std::pair<int, std::size_t>> 
     auto value = return_stack_.back();
     return_stack_.pop_back();
     return value;
+}
+
+void RuntimeContext::clear_control_stacks() {
+    return_stack_.clear();
+    for_stack_.clear();
+    while_stack_.clear();
 }
 
 void RuntimeContext::push_for(ForFrame frame) { for_stack_.push_back(std::move(frame)); }
@@ -569,6 +657,29 @@ void RuntimeContext::write_file(int file_number, const std::string& text) {
     if (handle->mode == FileMode::Input) throw std::runtime_error("File not open for output");
     handle->stream << text;
     handle->stream.flush();
+}
+
+void RuntimeContext::list_files(const std::string& pattern) const {
+    const auto matcher = wildcard_to_regex(pattern.empty() ? "*" : pattern);
+    std::vector<std::string> names;
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(std::filesystem::current_path(ec), ec)) {
+        if (ec) {
+            throw std::runtime_error("Failed to list files");
+        }
+        const auto name = entry.path().filename().string();
+        std::string upper = name;
+        std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::toupper(ch));
+        });
+        if (std::regex_match(upper, matcher)) {
+            names.push_back(name);
+        }
+    }
+    std::sort(names.begin(), names.end());
+    for (const auto& name : names) {
+        print(name + "\n");
+    }
 }
 
 void RuntimeContext::set_field(int file_number, std::vector<std::pair<int, std::string>> bindings) {
@@ -717,6 +828,12 @@ void RuntimeContext::create_directory(const std::string& path) {
     if (!std::filesystem::create_directory(path, ec) && ec) throw std::runtime_error("Failed to create directory: " + path);
 }
 
+void RuntimeContext::change_directory(const std::string& path) {
+    std::error_code ec;
+    std::filesystem::current_path(path, ec);
+    if (ec) throw std::runtime_error("Failed to change directory: " + path);
+}
+
 void RuntimeContext::remove_directory(const std::string& path) {
     std::error_code ec;
     const bool removed = std::filesystem::remove(path, ec);
@@ -741,6 +858,13 @@ void RuntimeContext::locate_cursor(std::optional<int> row, std::optional<int> co
     if (cursor.has_value()) {
         print(cursor.value() == 0 ? "[?25l" : "[?25h");
     }
+}
+
+void RuntimeContext::set_text_width(int columns) {
+    if (columns <= 0) {
+        throw std::runtime_error("WIDTH must be positive");
+    }
+    text_width_ = std::clamp(columns, 1, 255);
 }
 
 void RuntimeContext::set_color(std::optional<int> foreground, std::optional<int> background, std::optional<int> border) {
@@ -800,6 +924,7 @@ void RuntimeContext::set_screen(std::optional<int> mode, std::optional<int> colo
     for (std::size_t i = 0; i < palette_map_.size(); ++i) { palette_map_[i] = static_cast<std::uint8_t>(i); }
     text_row_ = 1;
     text_col_ = 1;
+    text_width_ = 80;
     text_foreground_ = 15;
     text_background_ = 0;
     cursor_visible_ = true;
@@ -809,6 +934,20 @@ void RuntimeContext::set_screen(std::optional<int> mode, std::optional<int> colo
 
 void RuntimeContext::set_key_display(bool enabled) {
     key_display_enabled_ = enabled;
+}
+
+void RuntimeContext::poke(int address, int value) {
+    if (address < 0 || address >= static_cast<int>(virtual_memory_.size())) {
+        throw std::runtime_error("POKE address out of range");
+    }
+    virtual_memory_[static_cast<std::size_t>(address)] = static_cast<std::uint8_t>(std::clamp(value, 0, 255));
+}
+
+auto RuntimeContext::peek(int address) const -> double {
+    if (address < 0 || address >= static_cast<int>(virtual_memory_.size())) {
+        throw std::runtime_error("PEEK address out of range");
+    }
+    return static_cast<double>(virtual_memory_[static_cast<std::size_t>(address)]);
 }
 
 void RuntimeContext::sound(std::optional<double> frequency, std::optional<double> duration) {

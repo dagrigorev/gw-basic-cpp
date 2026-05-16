@@ -21,18 +21,22 @@ This project aims to preserve the simplicity and spirit of GW-BASIC while provid
 * Variables:
 
   * Numeric + string
-  * Arrays (`DIM`)
+  * Arrays (`DIM`, `ERASE`, `OPTION BASE`)
   * Default typing (`DEFINT`, `DEFSTR`, etc.)
 * Expressions:
 
   * Arithmetic
+  * Exponentiation (`^`)
+  * Integer division (`\`) and `MOD`
   * Logical (`AND`, `OR`, `NOT`)
+  * User-defined `DEF FN` functions
 * Functions:
 
   * `ABS`, `INT`, `LEN`, `VAL`
-  * `SQR`, `SIN`, `COS`, `TAN`, `ATN`
+  * `FIX`, `CINT`, `CLNG`, `CSNG`, `CDBL`, `SGN`, `SQR`, `SIN`, `COS`, `TAN`, `ATN`, `EXP`, `LOG`
   * `RND`
-  * String functions (`LEFT$`, `RIGHT$`, `MID$`, etc.)
+  * `DATE$`, `TIME$`, `TIMER`
+  * String functions (`LEFT$`, `RIGHT$`, `MID$`, `UCASE$`, `LCASE$`, etc.)
 
 ---
 
@@ -72,6 +76,7 @@ This project aims to preserve the simplicity and spirit of GW-BASIC while provid
 * Palette remapping
 * Viewport and world-coordinate transforms
 * Hardware-accelerated presentation
+* Aspect-preserving window scaling
 * Automatic batching for performance
 
 #### Examples 
@@ -137,19 +142,17 @@ This project aims to preserve the simplicity and spirit of GW-BASIC while provid
 #### Linux
 
 ```bash
-mkdir build
-cd build
-cmake ..
-cmake --build .
+cmake --preset debug
+cmake --build --preset debug
+ctest --preset debug
 ```
 
 #### Windows (MSVC)
 
 ```powershell
-mkdir build
-cd build
-cmake ..
-cmake --build . --config Debug
+cmake --preset debug
+cmake --build --preset debug --config Debug
+ctest --preset debug -C Debug
 ```
 
 ---
@@ -168,10 +171,33 @@ gwbasic
 gwbasic --file ./examples/snake.bas
 ```
 
+### Console editor
+
+```bash
+gwbasic --edit ./examples/snake.bas
+```
+
+The editor accepts numbered BASIC lines directly and supports commands such as
+`RUN`, `CHECK`, `LIST`, `OPEN <file>`, `SAVE [file]`, `EDIT <line>`,
+`DEL <line>`, `RENUM`, `NEW`, and `QUIT`.
+
 ### Headless mode (no graphics window)
 
 ```bash
 gwbasic --headless --file ./examples/snake.bas
+```
+
+### Syntax check without running
+
+```bash
+gwbasic --check --file ./examples/snake.bas
+```
+
+Inside the REPL or a BASIC program, text source can be persisted with:
+
+```basic
+SAVE "program.bas"
+LOAD "program.bas"
 ```
 
 ---
@@ -189,6 +215,8 @@ Features:
 * real-time gameplay
 * keyboard control via graphics window
 * hardware-accelerated rendering
+
+More examples are listed in [examples/README.md](./examples/README.md).
 
 ---
 
@@ -208,6 +236,22 @@ Features:
 110 NEXT PX
 120 NEXT PY
 130 END
+```
+
+---
+
+## 📚 Compatibility
+
+See [docs/compatibility.md](./docs/compatibility.md) for the current supported
+GW-BASIC statements/functions, known differences, and test coverage.
+
+### API Documentation
+
+If Doxygen is installed, generate developer API docs with:
+
+```bash
+cmake --preset docs
+cmake --build --preset docs
 ```
 
 ---

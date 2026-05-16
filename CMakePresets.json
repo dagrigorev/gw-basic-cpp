@@ -1,0 +1,89 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "description": "Default debug build with tests enabled.",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "GWBASIC_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "description": "Optimized release build with tests enabled.",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "GWBASIC_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "analysis",
+      "displayName": "Static Analysis",
+      "description": "Debug build with clang-tidy and Cppcheck enabled.",
+      "binaryDir": "${sourceDir}/build/analysis",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "GWBASIC_ENABLE_CLANG_TIDY": "ON",
+        "GWBASIC_ENABLE_CPPCHECK": "ON"
+      }
+    },
+    {
+      "name": "docs",
+      "displayName": "Documentation",
+      "description": "Generate Doxygen API documentation.",
+      "binaryDir": "${sourceDir}/build/docs",
+      "cacheVariables": {
+        "GWBASIC_BUILD_DOCS": "ON",
+        "GWBASIC_BUILD_TESTS": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "analysis",
+      "configurePreset": "analysis"
+    },
+    {
+      "name": "docs",
+      "configurePreset": "docs",
+      "targets": [
+        "docs"
+      ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

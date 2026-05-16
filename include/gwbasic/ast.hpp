@@ -74,35 +74,49 @@ struct ReadStmt { std::vector<VariableRef> targets; };
 struct RestoreStmt { std::optional<int> line; };
 struct DimDecl { std::string name; std::vector<ExprPtr> dimensions; };
 struct DimStmt { std::vector<DimDecl> declarations; };
+struct EraseStmt { std::vector<std::string> names; };
+struct OptionBaseStmt { int base{}; };
 struct WhileStmt { ExprPtr condition; };
 struct WendStmt {};
 struct OnGotoStmt { ExprPtr selector; std::vector<int> targets; };
 struct OnGosubStmt { ExprPtr selector; std::vector<int> targets; };
+struct OnErrorGotoStmt { int target_line{}; };
+struct ResumeStmt { bool next{false}; std::optional<int> target_line; };
+struct ErrorStmt { ExprPtr code; };
 struct DefTypeRange { char start{}; char end{}; };
 struct DefIntStmt { std::vector<DefTypeRange> ranges; };
 struct DefStrStmt { std::vector<DefTypeRange> ranges; };
 struct DefSngStmt { std::vector<DefTypeRange> ranges; };
 struct DefDblStmt { std::vector<DefTypeRange> ranges; };
+struct DefFnStmt { std::string name; std::vector<std::string> parameters; ExprPtr body; };
+struct RandomizeStmt { std::optional<ExprPtr> seed; };
 struct StopStmt {};
 struct ContStmt {};
 struct EndStmt {};
 struct RemStmt { std::string comment; };
 struct ListStmt {};
 struct RunStmt {};
+struct LoadStmt { ExprPtr path; };
+struct SaveStmt { ExprPtr path; };
 struct NewStmt {};
 struct ClearStmt {};
+struct FilesStmt { std::optional<ExprPtr> pattern; };
 struct KillStmt { ExprPtr path; };
 struct NameStmt { ExprPtr old_path; ExprPtr new_path; };
 struct MkdirStmt { ExprPtr path; };
+struct ChdirStmt { ExprPtr path; };
 struct RmdirStmt { ExprPtr path; };
 struct LsetStmt { VariableRef target; ExprPtr value; };
 struct RsetStmt { VariableRef target; ExprPtr value; };
+struct SwapStmt { VariableRef left; VariableRef right; };
 struct ClsStmt {};
 struct LocateStmt { std::optional<ExprPtr> row; std::optional<ExprPtr> column; std::optional<ExprPtr> cursor; std::optional<ExprPtr> start; std::optional<ExprPtr> stop; };
+struct WidthStmt { ExprPtr columns; };
 struct ColorStmt { std::optional<ExprPtr> foreground; std::optional<ExprPtr> background; std::optional<ExprPtr> border; };
 struct BeepStmt {};
 struct ScreenStmt { std::optional<ExprPtr> mode; std::optional<ExprPtr> color_switch; std::optional<ExprPtr> active_page; std::optional<ExprPtr> visual_page; };
 struct KeyStmt { bool enabled{true}; };
+struct PokeStmt { ExprPtr address; ExprPtr value; };
 struct SoundStmt { ExprPtr frequency; ExprPtr duration; };
 struct PlayStmt { ExprPtr sequence; };
 struct PsetStmt { ExprPtr x; ExprPtr y; std::optional<ExprPtr> color; };
@@ -117,9 +131,9 @@ struct PaletteStmt { bool using_mode{false}; std::optional<VariableRef> using_so
 struct Statement {
     using Variant = std::variant<PrintStmt, WriteStmt, PrintUsingStmt, OpenStmt, CloseStmt, PrintFileStmt, WriteFileStmt, InputFileStmt, LineInputFileStmt, FieldStmt, PutStmt, GetStmt, GraphicsGetStmt, GraphicsPutStmt, LetStmt, InputStmt, LineInputStmt, IfStmt, IfThenStmt, GotoStmt, GosubStmt,
                                  ReturnStmt, ForStmt, NextStmt, DataStmt, ReadStmt, RestoreStmt,
-                                 DimStmt, WhileStmt, WendStmt, OnGotoStmt, OnGosubStmt, DefIntStmt,
-                                 DefStrStmt, DefSngStmt, DefDblStmt, StopStmt, ContStmt, EndStmt, RemStmt, ListStmt, RunStmt,
-                                 NewStmt, ClearStmt, KillStmt, NameStmt, MkdirStmt, RmdirStmt, LsetStmt, RsetStmt, ClsStmt, LocateStmt, ColorStmt, BeepStmt, ScreenStmt, KeyStmt, SoundStmt, PlayStmt, PsetStmt, GraphicsLineStmt, CircleStmt, PaintStmt, DrawStmt, ViewStmt, WindowStmt, PaletteStmt>;
+                                 DimStmt, EraseStmt, OptionBaseStmt, WhileStmt, WendStmt, OnGotoStmt, OnGosubStmt, OnErrorGotoStmt, ResumeStmt, ErrorStmt, DefFnStmt, DefIntStmt,
+                                 DefStrStmt, DefSngStmt, DefDblStmt, StopStmt, ContStmt, EndStmt, RemStmt, ListStmt, RunStmt, LoadStmt, SaveStmt,
+                                 NewStmt, ClearStmt, FilesStmt, KillStmt, NameStmt, MkdirStmt, ChdirStmt, RmdirStmt, LsetStmt, RsetStmt, SwapStmt, ClsStmt, LocateStmt, WidthStmt, ColorStmt, BeepStmt, ScreenStmt, KeyStmt, PokeStmt, SoundStmt, PlayStmt, RandomizeStmt, PsetStmt, GraphicsLineStmt, CircleStmt, PaintStmt, DrawStmt, ViewStmt, WindowStmt, PaletteStmt>;
     Variant node;
 };
 

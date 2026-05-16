@@ -16,18 +16,18 @@ namespace {
 [[nodiscard]] auto keyword_type(const std::string& text) -> TokenType {
     static const std::unordered_map<std::string, TokenType> map{
         {"PRINT", TokenType::KeywordPrint}, {"USING", TokenType::KeywordUsing}, {"OPEN", TokenType::KeywordOpen}, {"CLOSE", TokenType::KeywordClose}, {"WRITE", TokenType::KeywordWrite}, {"LINE", TokenType::KeywordLine}, {"AS", TokenType::KeywordAs}, {"LET", TokenType::KeywordLet},
-        {"INPUT", TokenType::KeywordInput}, {"OUTPUT", TokenType::KeywordOutput}, {"APPEND", TokenType::KeywordAppend}, {"RANDOM", TokenType::KeywordRandom}, {"LEN", TokenType::KeywordLen}, {"IF", TokenType::KeywordIf}, {"AND", TokenType::KeywordAnd}, {"OR", TokenType::KeywordOr}, {"NOT", TokenType::KeywordNot},
+        {"INPUT", TokenType::KeywordInput}, {"OUTPUT", TokenType::KeywordOutput}, {"APPEND", TokenType::KeywordAppend}, {"RANDOM", TokenType::KeywordRandom}, {"LEN", TokenType::KeywordLen}, {"IF", TokenType::KeywordIf}, {"AND", TokenType::KeywordAnd}, {"OR", TokenType::KeywordOr}, {"MOD", TokenType::KeywordMod}, {"NOT", TokenType::KeywordNot},
         {"THEN", TokenType::KeywordThen}, {"ELSE", TokenType::KeywordElse}, {"GOTO", TokenType::KeywordGoto},
         {"GOSUB", TokenType::KeywordGosub}, {"RETURN", TokenType::KeywordReturn},
         {"FOR", TokenType::KeywordFor}, {"TO", TokenType::KeywordTo},
         {"STEP", TokenType::KeywordStep}, {"NEXT", TokenType::KeywordNext},
         {"DATA", TokenType::KeywordData}, {"READ", TokenType::KeywordRead},
-        {"RESTORE", TokenType::KeywordRestore}, {"DIM", TokenType::KeywordDim},
+        {"RESTORE", TokenType::KeywordRestore}, {"DIM", TokenType::KeywordDim}, {"ERASE", TokenType::KeywordErase}, {"OPTION", TokenType::KeywordOption}, {"BASE", TokenType::KeywordBase},
         {"WHILE", TokenType::KeywordWhile}, {"WEND", TokenType::KeywordWend},
-        {"ON", TokenType::KeywordOn}, {"DEFINT", TokenType::KeywordDefint}, {"DEFSTR", TokenType::KeywordDefstr}, {"DEFSNG", TokenType::KeywordDefsng}, {"DEFDBL", TokenType::KeywordDefdbl}, {"STOP", TokenType::KeywordStop},
+        {"ON", TokenType::KeywordOn}, {"ERROR", TokenType::KeywordError}, {"RESUME", TokenType::KeywordResume}, {"DEF", TokenType::KeywordDef}, {"DEFINT", TokenType::KeywordDefint}, {"DEFSTR", TokenType::KeywordDefstr}, {"DEFSNG", TokenType::KeywordDefsng}, {"DEFDBL", TokenType::KeywordDefdbl}, {"STOP", TokenType::KeywordStop},
         {"CONT", TokenType::KeywordCont}, {"END", TokenType::KeywordEnd}, {"REM", TokenType::KeywordRem},
-        {"LIST", TokenType::KeywordList}, {"RUN", TokenType::KeywordRun},
-        {"NEW", TokenType::KeywordNew}, {"CLEAR", TokenType::KeywordClear}, {"FIELD", TokenType::KeywordField}, {"GET", TokenType::KeywordGet}, {"PUT", TokenType::KeywordPut}, {"LSET", TokenType::KeywordLset}, {"RSET", TokenType::KeywordRset}, {"KILL", TokenType::KeywordKill}, {"NAME", TokenType::KeywordName}, {"MKDIR", TokenType::KeywordMkdir}, {"RMDIR", TokenType::KeywordRmdir}, {"CLS", TokenType::KeywordCls}, {"LOCATE", TokenType::KeywordLocate}, {"COLOR", TokenType::KeywordColor}, {"BEEP", TokenType::KeywordBeep}, {"SCREEN", TokenType::KeywordScreen}, {"KEY", TokenType::KeywordKey}, {"SOUND", TokenType::KeywordSound}, {"PLAY", TokenType::KeywordPlay}, {"PSET", TokenType::KeywordPset}, {"CIRCLE", TokenType::KeywordCircle}, {"PAINT", TokenType::KeywordPaint}, {"DRAW", TokenType::KeywordDraw}, {"VIEW", TokenType::KeywordView}, {"WINDOW", TokenType::KeywordWindow}, {"PALETTE", TokenType::KeywordPalette}
+        {"LIST", TokenType::KeywordList}, {"RUN", TokenType::KeywordRun}, {"LOAD", TokenType::KeywordLoad}, {"SAVE", TokenType::KeywordSave},
+        {"NEW", TokenType::KeywordNew}, {"CLEAR", TokenType::KeywordClear}, {"FIELD", TokenType::KeywordField}, {"FILES", TokenType::KeywordFiles}, {"GET", TokenType::KeywordGet}, {"PUT", TokenType::KeywordPut}, {"LSET", TokenType::KeywordLset}, {"RSET", TokenType::KeywordRset}, {"SWAP", TokenType::KeywordSwap}, {"KILL", TokenType::KeywordKill}, {"NAME", TokenType::KeywordName}, {"MKDIR", TokenType::KeywordMkdir}, {"CHDIR", TokenType::KeywordChdir}, {"RMDIR", TokenType::KeywordRmdir}, {"CLS", TokenType::KeywordCls}, {"LOCATE", TokenType::KeywordLocate}, {"WIDTH", TokenType::KeywordWidth}, {"COLOR", TokenType::KeywordColor}, {"BEEP", TokenType::KeywordBeep}, {"SCREEN", TokenType::KeywordScreen}, {"KEY", TokenType::KeywordKey}, {"POKE", TokenType::KeywordPoke}, {"SOUND", TokenType::KeywordSound}, {"PLAY", TokenType::KeywordPlay}, {"RANDOMIZE", TokenType::KeywordRandomize}, {"PSET", TokenType::KeywordPset}, {"CIRCLE", TokenType::KeywordCircle}, {"PAINT", TokenType::KeywordPaint}, {"DRAW", TokenType::KeywordDraw}, {"VIEW", TokenType::KeywordView}, {"WINDOW", TokenType::KeywordWindow}, {"PALETTE", TokenType::KeywordPalette}
     };
     if (const auto it = map.find(text); it != map.end()) {
         return it->second;
@@ -54,6 +54,9 @@ auto Lexer::tokenize(const std::string& line) const -> std::vector<Token> {
             std::size_t start = i;
             if (line[i] == '.') {
                 ++i;
+                while (i < line.size() && std::isdigit(static_cast<unsigned char>(line[i]))) {
+                    ++i;
+                }
             } else {
                 while (i < line.size() && std::isdigit(static_cast<unsigned char>(line[i]))) {
                     ++i;
@@ -133,6 +136,8 @@ auto Lexer::tokenize(const std::string& line) const -> std::vector<Token> {
             case '+': push(TokenType::Plus, 1); break;
             case '*': push(TokenType::Star, 1); break;
             case '/': push(TokenType::Slash, 1); break;
+            case '\\': push(TokenType::Backslash, 1); break;
+            case '^': push(TokenType::Caret, 1); break;
             case '#': push(TokenType::Hash, 1); break;
             case '=': push(TokenType::Equal, 1); break;
             case '<': push(TokenType::Less, 1); break;

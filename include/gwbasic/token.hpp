@@ -4,6 +4,7 @@
 
 namespace gwbasic {
 
+/** Token categories emitted by Lexer and consumed by Parser. */
 enum class TokenType {
     EndOfLine,
     Number,
@@ -19,6 +20,8 @@ enum class TokenType {
     Minus,
     Star,
     Slash,
+    Backslash,
+    Caret,
     Hash,
     Equal,
     NotEqual,
@@ -45,6 +48,7 @@ enum class TokenType {
     KeywordElse,
     KeywordAnd,
     KeywordOr,
+    KeywordMod,
     KeywordNot,
     KeywordGoto,
     KeywordGosub,
@@ -57,9 +61,15 @@ enum class TokenType {
     KeywordRead,
     KeywordRestore,
     KeywordDim,
+    KeywordErase,
+    KeywordOption,
+    KeywordBase,
     KeywordWhile,
     KeywordWend,
     KeywordOn,
+    KeywordError,
+    KeywordResume,
+    KeywordDef,
     KeywordDefint,
     KeywordDefstr,
     KeywordDefsng,
@@ -70,25 +80,33 @@ enum class TokenType {
     KeywordRem,
     KeywordList,
     KeywordRun,
+    KeywordLoad,
+    KeywordSave,
     KeywordNew,
     KeywordClear,
     KeywordField,
+    KeywordFiles,
     KeywordGet,
     KeywordPut,
     KeywordLset,
     KeywordRset,
+    KeywordSwap,
     KeywordKill,
     KeywordName,
     KeywordMkdir,
+    KeywordChdir,
     KeywordRmdir,
     KeywordCls,
     KeywordLocate,
+    KeywordWidth,
     KeywordColor,
     KeywordBeep,
     KeywordScreen,
     KeywordKey,
+    KeywordPoke,
     KeywordSound,
     KeywordPlay,
+    KeywordRandomize,
     KeywordPset,
     KeywordCircle,
     KeywordPaint,
@@ -98,12 +116,14 @@ enum class TokenType {
     KeywordPalette
 };
 
+/** One lexical token with its original lexeme and 1-based source column. */
 struct Token {
     TokenType type{};
     std::string lexeme{};
     std::size_t column{};
 };
 
+/** Return a human-readable token name, mostly for diagnostics and tests. */
 [[nodiscard]] auto to_string(TokenType type) -> std::string;
 
 } // namespace gwbasic

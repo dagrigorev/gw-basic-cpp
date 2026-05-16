@@ -44,6 +44,37 @@ namespace {
     return {static_cast<std::uint8_t>(((index >> 5) & 7) * 255 / 7), static_cast<std::uint8_t>(((index >> 2) & 7) * 255 / 7), static_cast<std::uint8_t>((index & 3) * 255 / 3)};
 }
 
+struct LetterboxViewport {
+    int x{};
+    int y{};
+    int width{};
+    int height{};
+};
+
+[[nodiscard]] auto compute_letterbox_viewport(int client_width, int client_height, int canvas_width, int canvas_height)
+    -> LetterboxViewport {
+    client_width = std::max(1, client_width);
+    client_height = std::max(1, client_height);
+    canvas_width = std::max(1, canvas_width);
+    canvas_height = std::max(1, canvas_height);
+
+    const auto width_from_height = static_cast<long long>(client_height) * canvas_width / canvas_height;
+    int target_width = client_width;
+    int target_height = client_height;
+    if (width_from_height <= client_width) {
+        target_width = std::max(1, static_cast<int>(width_from_height));
+    } else {
+        target_height = std::max(1, static_cast<int>(static_cast<long long>(client_width) * canvas_height / canvas_width));
+    }
+
+    return {
+        (client_width - target_width) / 2,
+        (client_height - target_height) / 2,
+        target_width,
+        target_height
+    };
+}
+
 class NullPresenter final : public Presenter {
 public:
     void present(const std::vector<std::uint8_t>&, int, int, const std::array<std::uint8_t, 256>&) override {}
@@ -142,7 +173,8 @@ private:
     void render_frame() {
         if (!available_ || !has_frame_ || canvas_width_ <= 0 || canvas_height_ <= 0) return;
         XWindowAttributes a{}; XGetWindowAttributes(display_, window_, &a); int ww=std::max(1,a.width), wh=std::max(1,a.height);
-        glViewport_(0,0,ww,wh); glMatrixMode_(GL_PROJECTION); glLoadIdentity_(); glOrtho_(0.0, static_cast<double>(canvas_width_), 0.0, static_cast<double>(canvas_height_), -1.0, 1.0); glMatrixMode_(GL_MODELVIEW); glLoadIdentity_(); glClearColor_(0,0,0,1); glClear_(GL_COLOR_BUFFER_BIT); glRasterPos2i_(0,canvas_height_); glPixelZoom_(static_cast<GLfloat>(ww)/canvas_width_, -static_cast<GLfloat>(wh)/canvas_height_); glDrawPixels_(canvas_width_,canvas_height_,GL_RGB,GL_UNSIGNED_BYTE,rgb_.data()); glFlush_(); glXSwapBuffers_(display_, window_);
+        const auto viewport = compute_letterbox_viewport(ww, wh, canvas_width_, canvas_height_);
+        glViewport_(viewport.x,viewport.y,viewport.width,viewport.height); glMatrixMode_(GL_PROJECTION); glLoadIdentity_(); glOrtho_(0.0, static_cast<double>(canvas_width_), 0.0, static_cast<double>(canvas_height_), -1.0, 1.0); glMatrixMode_(GL_MODELVIEW); glLoadIdentity_(); glClearColor_(0,0,0,1); glClear_(GL_COLOR_BUFFER_BIT); glRasterPos2i_(0,canvas_height_); glPixelZoom_(static_cast<GLfloat>(viewport.width)/canvas_width_, -static_cast<GLfloat>(viewport.height)/canvas_height_); glDrawPixels_(canvas_width_,canvas_height_,GL_RGB,GL_UNSIGNED_BYTE,rgb_.data()); glFlush_(); glXSwapBuffers_(display_, window_);
     }
     void cleanup() { if (display_ && context_ && glXMakeCurrent_ && glXDestroyContext_) { glXMakeCurrent_(display_,0,nullptr); glXDestroyContext_(display_,context_); } if (display_ && window_) XDestroyWindow(display_,window_); if (display_) XCloseDisplay(display_); if (gl_lib_) dlclose(gl_lib_); display_=nullptr; window_=0; context_=nullptr; gl_lib_=nullptr; available_=false; }
     Display* display_{nullptr}; Window window_{}; Atom wm_delete_{}; GLXContext context_{nullptr}; void* gl_lib_{nullptr}; bool available_{false}; int canvas_width_{0}, canvas_height_{0}; std::vector<std::uint8_t> rgb_; bool has_frame_{false}; std::queue<std::string> key_queue_; std::mutex key_mutex_; std::chrono::steady_clock::time_point last_present_{}; const std::chrono::milliseconds frame_interval_{16};
@@ -450,13 +482,14 @@ private:
         if (render_target_view_ == nullptr) return;
         RECT client{};
         GetClientRect(window_, &client);
-        const auto client_width = static_cast<float>(std::max<LONG>(1, client.right - client.left));
-        const auto client_height = static_cast<float>(std::max<LONG>(1, client.bottom - client.top));
+        const auto client_width = static_cast<int>(std::max<LONG>(1, client.right - client.left));
+        const auto client_height = static_cast<int>(std::max<LONG>(1, client.bottom - client.top));
+        const auto viewport_rect = compute_letterbox_viewport(client_width, client_height, canvas_width_, canvas_height_);
         D3D11_VIEWPORT viewport{};
-        viewport.TopLeftX = 0.0f;
-        viewport.TopLeftY = 0.0f;
-        viewport.Width = client_width;
-        viewport.Height = client_height;
+        viewport.TopLeftX = static_cast<float>(viewport_rect.x);
+        viewport.TopLeftY = static_cast<float>(viewport_rect.y);
+        viewport.Width = static_cast<float>(viewport_rect.width);
+        viewport.Height = static_cast<float>(viewport_rect.height);
         viewport.MinDepth = 0.0f;
         viewport.MaxDepth = 1.0f;
         context_->RSSetViewports(1, &viewport);
