@@ -154,25 +154,6 @@ private:
     return out;
 }
 
-
-
-[[nodiscard]] auto print_control_padding(const Expr& expr, std::size_t column) -> std::optional<std::size_t> {
-    if (const auto* call = std::get_if<FunctionCallExpr>(&expr.node)) {
-        if (call->name == "SPC") {
-            if (call->arguments.size() != 1) {
-                throw std::runtime_error("SPC expects 1 argument");
-            }
-            return 0;
-        }
-        if (call->name == "TAB") {
-            if (call->arguments.size() != 1) {
-                throw std::runtime_error("TAB expects 1 argument");
-            }
-            return column;
-        }
-    }
-    return std::nullopt;
-}
 [[nodiscard]] auto comma_padding(std::size_t current_column) -> std::size_t {
     constexpr std::size_t zone = 14;
     const auto next_stop = ((current_column / zone) + 1) * zone;

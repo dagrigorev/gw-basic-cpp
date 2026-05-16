@@ -1,6 +1,7 @@
 option(GWBASIC_BUILD_DOCS "Build API documentation with Doxygen" OFF)
 
 if(GWBASIC_BUILD_DOCS)
+  set(GWBASIC_BUILD_NATIVE_GRAPHICS OFF CACHE BOOL "Build native graphics presenter backend" FORCE)
   find_package(Doxygen REQUIRED)
   set(GWBASIC_DOXYGEN_INPUT
       "${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/docs ${PROJECT_SOURCE_DIR}/README.md")

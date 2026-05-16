@@ -15,12 +15,12 @@
 #include <string>
 #include <vector>
 
-#if defined(__linux__)
+#if defined(__linux__) && defined(GWBASIC_NATIVE_GRAPHICS)
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <dlfcn.h>
-#elif defined(_WIN32)
+#elif defined(_WIN32) && defined(GWBASIC_NATIVE_GRAPHICS)
 #define NOMINMAX
 #include <windows.h>
 #include <d3d11.h>
@@ -44,15 +44,9 @@ namespace {
     return {static_cast<std::uint8_t>(((index >> 5) & 7) * 255 / 7), static_cast<std::uint8_t>(((index >> 2) & 7) * 255 / 7), static_cast<std::uint8_t>((index & 3) * 255 / 3)};
 }
 
-struct LetterboxViewport {
-    int x{};
-    int y{};
-    int width{};
-    int height{};
-};
-
+#if defined(GWBASIC_NATIVE_GRAPHICS) && (defined(__linux__) || defined(_WIN32))
 [[nodiscard]] auto compute_letterbox_viewport(int client_width, int client_height, int canvas_width, int canvas_height)
-    -> LetterboxViewport {
+    -> std::array<int, 4> {
     client_width = std::max(1, client_width);
     client_height = std::max(1, client_height);
     canvas_width = std::max(1, canvas_width);
@@ -67,22 +61,22 @@ struct LetterboxViewport {
         target_height = std::max(1, static_cast<int>(static_cast<long long>(client_width) * canvas_height / canvas_width));
     }
 
-    return {
+    return std::array<int, 4>{
         (client_width - target_width) / 2,
         (client_height - target_height) / 2,
         target_width,
         target_height
     };
 }
+#endif
 
 class NullPresenter final : public Presenter {
 public:
     void present(const std::vector<std::uint8_t>&, int, int, const std::array<std::uint8_t, 256>&) override {}
-    void wait_until_closed() override {}
     [[nodiscard]] bool is_open() const override { return false; }
 };
 
-#if defined(__linux__)
+#if defined(__linux__) && defined(GWBASIC_NATIVE_GRAPHICS)
 using GLXContext = void*; using GLXDrawable = unsigned long; using GLenum = unsigned int; using GLbitfield = unsigned int; using GLint = int; using GLsizei = int; using GLfloat = float; using GLdouble = double;
 constexpr int GLX_RGBA = 4, GLX_DOUBLEBUFFER = 5, GLX_DEPTH_SIZE = 12; constexpr GLenum GL_COLOR_BUFFER_BIT=0x00004000, GL_RGB=0x1907, GL_UNSIGNED_BYTE=0x1401, GL_PROJECTION=0x1701, GL_MODELVIEW=0x1700;
 using FnChooseVisual=XVisualInfo* (*)(Display*, int, int*); using FnCreateContext=GLXContext (*)(Display*, XVisualInfo*, GLXContext, int); using FnMakeCurrent=int (*)(Display*, GLXDrawable, GLXContext); using FnSwapBuffers=void (*)(Display*, GLXDrawable); using FnDestroyContext=void (*)(Display*, GLXContext); using FnClearColor=void (*)(GLfloat,GLfloat,GLfloat,GLfloat); using FnClear=void (*)(GLbitfield); using FnViewport=void (*)(GLint,GLint,GLsizei,GLsizei); using FnMatrixMode=void (*)(GLenum); using FnLoadIdentity=void (*)(); using FnOrtho=void (*)(GLdouble,GLdouble,GLdouble,GLdouble,GLdouble,GLdouble); using FnRasterPos2i=void (*)(GLint,GLint); using FnPixelZoom=void (*)(GLfloat,GLfloat); using FnDrawPixels=void (*)(GLsizei,GLsizei,GLenum,GLenum,const void*); using FnFlush=void (*)();
@@ -174,13 +168,13 @@ private:
         if (!available_ || !has_frame_ || canvas_width_ <= 0 || canvas_height_ <= 0) return;
         XWindowAttributes a{}; XGetWindowAttributes(display_, window_, &a); int ww=std::max(1,a.width), wh=std::max(1,a.height);
         const auto viewport = compute_letterbox_viewport(ww, wh, canvas_width_, canvas_height_);
-        glViewport_(viewport.x,viewport.y,viewport.width,viewport.height); glMatrixMode_(GL_PROJECTION); glLoadIdentity_(); glOrtho_(0.0, static_cast<double>(canvas_width_), 0.0, static_cast<double>(canvas_height_), -1.0, 1.0); glMatrixMode_(GL_MODELVIEW); glLoadIdentity_(); glClearColor_(0,0,0,1); glClear_(GL_COLOR_BUFFER_BIT); glRasterPos2i_(0,canvas_height_); glPixelZoom_(static_cast<GLfloat>(viewport.width)/canvas_width_, -static_cast<GLfloat>(viewport.height)/canvas_height_); glDrawPixels_(canvas_width_,canvas_height_,GL_RGB,GL_UNSIGNED_BYTE,rgb_.data()); glFlush_(); glXSwapBuffers_(display_, window_);
+        glViewport_(viewport[0],viewport[1],viewport[2],viewport[3]); glMatrixMode_(GL_PROJECTION); glLoadIdentity_(); glOrtho_(0.0, static_cast<double>(canvas_width_), 0.0, static_cast<double>(canvas_height_), -1.0, 1.0); glMatrixMode_(GL_MODELVIEW); glLoadIdentity_(); glClearColor_(0,0,0,1); glClear_(GL_COLOR_BUFFER_BIT); glRasterPos2i_(0,canvas_height_); glPixelZoom_(static_cast<GLfloat>(viewport[2])/canvas_width_, -static_cast<GLfloat>(viewport[3])/canvas_height_); glDrawPixels_(canvas_width_,canvas_height_,GL_RGB,GL_UNSIGNED_BYTE,rgb_.data()); glFlush_(); glXSwapBuffers_(display_, window_);
     }
     void cleanup() { if (display_ && context_ && glXMakeCurrent_ && glXDestroyContext_) { glXMakeCurrent_(display_,0,nullptr); glXDestroyContext_(display_,context_); } if (display_ && window_) XDestroyWindow(display_,window_); if (display_) XCloseDisplay(display_); if (gl_lib_) dlclose(gl_lib_); display_=nullptr; window_=0; context_=nullptr; gl_lib_=nullptr; available_=false; }
     Display* display_{nullptr}; Window window_{}; Atom wm_delete_{}; GLXContext context_{nullptr}; void* gl_lib_{nullptr}; bool available_{false}; int canvas_width_{0}, canvas_height_{0}; std::vector<std::uint8_t> rgb_; bool has_frame_{false}; std::queue<std::string> key_queue_; std::mutex key_mutex_; std::chrono::steady_clock::time_point last_present_{}; const std::chrono::milliseconds frame_interval_{16};
     FnChooseVisual glXChooseVisual_{nullptr}; FnCreateContext glXCreateContext_{nullptr}; FnMakeCurrent glXMakeCurrent_{nullptr}; FnSwapBuffers glXSwapBuffers_{nullptr}; FnDestroyContext glXDestroyContext_{nullptr}; FnClearColor glClearColor_{nullptr}; FnClear glClear_{nullptr}; FnViewport glViewport_{nullptr}; FnMatrixMode glMatrixMode_{nullptr}; FnLoadIdentity glLoadIdentity_{nullptr}; FnOrtho glOrtho_{nullptr}; FnRasterPos2i glRasterPos2i_{nullptr}; FnPixelZoom glPixelZoom_{nullptr}; FnDrawPixels glDrawPixels_{nullptr}; FnFlush glFlush_{nullptr};
 };
-#elif defined(_WIN32)
+#elif defined(_WIN32) && defined(GWBASIC_NATIVE_GRAPHICS)
 struct DxVertex {
     float position[3];
     float uv[2];
@@ -486,10 +480,10 @@ private:
         const auto client_height = static_cast<int>(std::max<LONG>(1, client.bottom - client.top));
         const auto viewport_rect = compute_letterbox_viewport(client_width, client_height, canvas_width_, canvas_height_);
         D3D11_VIEWPORT viewport{};
-        viewport.TopLeftX = static_cast<float>(viewport_rect.x);
-        viewport.TopLeftY = static_cast<float>(viewport_rect.y);
-        viewport.Width = static_cast<float>(viewport_rect.width);
-        viewport.Height = static_cast<float>(viewport_rect.height);
+        viewport.TopLeftX = static_cast<float>(viewport_rect[0]);
+        viewport.TopLeftY = static_cast<float>(viewport_rect[1]);
+        viewport.Width = static_cast<float>(viewport_rect[2]);
+        viewport.Height = static_cast<float>(viewport_rect[3]);
         viewport.MinDepth = 0.0f;
         viewport.MaxDepth = 1.0f;
         context_->RSSetViewports(1, &viewport);
@@ -610,9 +604,9 @@ private:
 } // namespace
 
 auto create_default_presenter() -> std::unique_ptr<Presenter> {
-#if defined(__linux__)
+#if defined(__linux__) && defined(GWBASIC_NATIVE_GRAPHICS)
     return std::make_unique<LinuxOpenGLPresenter>();
-#elif defined(_WIN32)
+#elif defined(_WIN32) && defined(GWBASIC_NATIVE_GRAPHICS)
     return std::make_unique<WindowsDirectXPresenter>();
 #else
     return std::make_unique<NullPresenter>();

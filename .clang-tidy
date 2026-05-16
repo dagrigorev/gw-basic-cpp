@@ -6,7 +6,6 @@ Checks: >
   readability-*
 WarningsAsErrors: '*'
 HeaderFilterRegex: '.*'
-AnalyzeTemporaryDtors: false
 CheckOptions:
   - key: readability-identifier-length.IgnoredVariableNames
     value: 'i|j|x|y|ch|hr|ec|it|in|os'

@@ -469,7 +469,7 @@ void RuntimeContext::dim_array(const std::string& name, std::vector<int> dimensi
             throw std::runtime_error("DIM dimension is too large");
         }
         const auto extent = static_cast<std::size_t>(dim - option_base_ + 1);
-        if (extent != 0 && count > std::numeric_limits<std::size_t>::max() / extent) {
+        if (count > std::numeric_limits<std::size_t>::max() / extent) {
             throw std::runtime_error("DIM dimensions are too large");
         }
         count *= extent;
