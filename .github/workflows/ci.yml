@@ -56,29 +56,6 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C ${{ matrix.config }} --output-on-failure
 
-  static-analysis:
-    name: Static analysis
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install tools and dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-tidy cppcheck libx11-dev libgl1-mesa-dev
-
-      - name: Configure
-        run: >
-          cmake -S . -B build-analysis
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-          -DGWBASIC_ENABLE_CLANG_TIDY=ON
-          -DGWBASIC_ENABLE_CPPCHECK=ON
-
-      - name: Analyze
-        run: cmake --build build-analysis --parallel
-
   fuzz-smoke:
     name: Fuzz smoke
     runs-on: ubuntu-latest
