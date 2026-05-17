@@ -31,6 +31,9 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-docs -DGWBASIC_BUILD_DOCS=ON
 
+      - name: Create output directory for docs
+        run: mkdir -p build-docs/docs/api
+
       - name: Build docs
         run: cmake --build build-docs --target docs
 
