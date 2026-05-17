@@ -34,6 +34,9 @@ jobs:
       - name: Create output directory for docs
         run: mkdir -p build-docs/docs/api
 
+      - name: Add .nojekyll file
+        run: touch build-docs/docs/api/html/.nojekyll
+
       - name: Build docs
         run: cmake --build build-docs --target docs
 
